@@ -1,0 +1,24 @@
+:root {
+  --bg: #0b1020;
+  --bg2: #0f1730;
+  --panel: #121a33;
+  --panel2: #18224a;
+  --edge: #2a3763;
+  --text: #e8ecff;
+  --muted: #8a95c4;
+  --gold: #f5b942;
+  --ember: #ff6a3d;
+  --hp: #d8322e;
+  --hp2: #ff7a59;
+  --ok: #3ddc84;
+  --blue: #2f7bff;
+  --gray: #5b6488;
+  --radius: 14px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-title: Georgia, "Times New Roman", serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overscroll-behavior: none; }
+button { font: inherit; color: inherit; }
