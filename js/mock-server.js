@@ -2,11 +2,11 @@
 // and tuned without a server. Add ?dev=1 for time-travel tools (window.wbDev).
 import {
   createWorld, ensurePlayer, attack, buyUpgrade, claimRewards, setProfile, leaderboard, publicState, resolveExpiry,
-  setBadge, playerCard,
+  setBadge, playerCard, setClass, useAbility, buyTech,
 } from '../shared/engine.js';
 import { serialize, deserialize } from '../shared/serialize.js';
 
-const KEY = 'wb-mock-v2'; // v2: perks, starter attack, name flag (old saves are dropped)
+const KEY = 'wb-mock-v4'; // v4: tech tree, participation gems (old saves are dropped)
 const ME = 'me';
 const BOTS = [
   ['Frostfang', 'US', 'WA', '98391'], ['EmberWolf', 'US', 'WA', '98388'], ['NightOwl', 'US', 'WA', '98001'], ['Rook', 'US', 'OR', '97201'],
@@ -32,7 +32,7 @@ export function createMock() {
   ensurePlayer(w, ME, Math.random, undefined, now());
   BOTS.forEach(([name, country, state, zip], i) => {
     const b = ensurePlayer(w, `bot-${i}`, Math.random, name, now() - (i + 1) * 86400000 * 9);
-    if (!b.zip && !b.state) { b.country = country; b.state = state; b.zip = zip; b.damageRank = (i * 3) % 13; }
+    if (!b.zip && !b.state) { b.country = country; b.state = state; b.zip = zip; b.damageRank = (i * 3) % 13; b.cls = ['warrior', 'barbarian', 'rogue', 'archer', 'mage'][i % 5]; b.up.crit_chance = i % 9; }
   });
 
   const save = () => {
@@ -55,6 +55,7 @@ export function createMock() {
       skipDays(d) { offset += d * 86400000; resolveExpiry(w, now()); },
       coins(n) { w.players.get(ME).coins += BigInt(n); },
       rank(n) { w.players.get(ME).damageRank = n; },
+      gems(n) { w.players.get(ME).gems += BigInt(n); },
       refill() { w.players.get(ME).attacksUsed = 0; },
       reset() { localStorage.removeItem(KEY); location.reload(); },
     };
@@ -69,6 +70,10 @@ export function createMock() {
     claim: () => delay(claimRewards(w, ME)),
     setProfile: (p) => delay(setProfile(w, ME, p)),
     setBadge: (b) => delay(setBadge(w, ME, b)),
+    setClass: (c) => delay(setClass(w, ME, c, now())),
+    useAbility: () => delay(useAbility(w, ME, now())),
+    buyTech: (n) => delay(buyTech(w, ME, n)),
+    deleteMe: () => { try { localStorage.removeItem(KEY); } catch { /* ignore */ } return delay({ ok: true }); },
     card: (pid) => delay(JSON.parse(JSON.stringify(playerCard(w, pid), (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))),
     leaderboard: (scope, period) => {
       resolveExpiry(w, now());

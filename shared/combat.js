@@ -143,3 +143,49 @@ export function formatBig(n) {
 export function groupDigits(n) {
   return BigInt(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
+
+// ---------------------------------------------------------------- Phase 3: coin upgrades, crits, gems, classes
+// The six Home coin upgrades. base_damage uses upgradeCost(); the other five use ceil(base * num^r / den^r).
+// Provisional defaults from spec v1.2 (growth rates are the spec's; base prices and caps are ours). Mirrored in SQL.
+export const UPGRADES = {
+  base_damage:   { name: 'Base Damage',     max: null },
+  crit_chance:   { name: 'Critical Chance', base: 1n,  num: 2n,   den: 1n,   max: 25, step: 2,  unit: '% crit chance' },
+  crit_damage:   { name: 'Critical Damage', base: 10n, num: 175n, den: 100n, max: 50, step: 10, unit: '% crit damage' },
+  coin_bonus:    { name: 'Coin Bonus',      base: 10n, num: 18n,  den: 10n,  max: 40, step: 5,  unit: '% coins' },
+  double_strike: { name: 'Double Strike',   base: 20n, num: 2n,   den: 1n,   max: 25, step: 2,  unit: '% double strike' },
+  boss_damage:   { name: 'Boss Damage',     base: 15n, num: 19n,  den: 10n,  max: 50, step: 2,  unit: '% vs World Bosses' },
+};
+export const UPGRADE_KEYS = Object.keys(UPGRADES);
+export const emptyUpgrades = () => ({ crit_chance: 0, crit_damage: 0, coin_bonus: 0, double_strike: 0, boss_damage: 0 });
+
+export function costOf(key, rank) {
+  if (key === 'base_damage') return upgradeCost(rank);
+  const u = UPGRADES[key];
+  const r = BigInt(rank);
+  return ceilDiv(u.base * u.num ** r, u.den ** r);
+}
+
+export const randInt = (n, rng) => Math.floor(rng() * n); // 0..n-1
+
+// Five classes, one preferred boss type each. Daily ability: once per Pacific day.
+export const CLASSES = {
+  warrior:   { name: 'Warrior',   dmg: 'Physical',  prefers: 'Construct', ability: 'Titan Strike',   desc: 'Next attack deals 6x damage.',             mult: 600, charges: 1 },
+  barbarian: { name: 'Barbarian', dmg: 'Blunt',     prefers: 'Beast',     ability: 'Berserk Frenzy', desc: 'Gain 5 extra attacks today.',              extra: 5 },
+  rogue:     { name: 'Rogue',     dmg: 'Piercing',  prefers: 'Humanoid',  ability: 'Shadow Strike',  desc: 'Next 5 attacks are guaranteed critical.', crit: true, charges: 5 },
+  archer:    { name: 'Archer',    dmg: 'Ranged',    prefers: 'Flying',    ability: 'Rain of Arrows', desc: 'Next 5 attacks deal 2x damage.',           mult: 200, charges: 5 },
+  mage:      { name: 'Mage',      dmg: 'Elemental', prefers: 'Magical',   ability: 'Arcane Burst',   desc: 'Next 2 attacks deal 3.5x damage.',         mult: 350, charges: 2 },
+};
+export const CLASS_KEYS = Object.keys(CLASSES);
+export const CLASS_SWITCH_GEMS = 100n;
+export const FREE_SWITCH_DAYS = 7;
+export const MONTHLY_SWITCH_DAYS = 30;
+
+export const critChancePct = (critRank, perkCrit) => Math.min(100, 2 * critRank + perkCrit);
+export const critMultPct = (critDmgRank) => 200 + 10 * critDmgRank;
+
+// One strike: 1.25^rank * dmgPct% * (crit ? critMult% : 100%) * ability%, stochastic rounding, at least 1.
+export function rollStrike(rank, dmgPct, critPct, abilityPct, rng) {
+  const r = BigInt(rank);
+  const d = stochRound(5n ** r * BigInt(dmgPct) * BigInt(critPct) * BigInt(abilityPct), 4n ** r * 1000000n, rng);
+  return d < 1n ? 1n : d;
+}

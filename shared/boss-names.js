@@ -1,16 +1,18 @@
 // Display names for numbered bosses 1 to 100, from the primary boss sheet.
 // Past 100 the name cycles with a tier suffix. Art cycles the same way.
+// Ordered so each name fits its boss type (Construct, Beast, Humanoid, Flying, Magical rotate in that order,
+// see bossType in combat.js). Bosses 1 to 5 match the five type images until each boss gets its own art.
 export const BOSS_NAMES = [
-  'Stone Golem', 'Cave Troll', 'Forest Ent', 'Sand Wraith', 'Dire Wolf Alpha', 'Swamp Leviathan', 'Frost Giant', 'Lava Brute', 'Storm Elemental', 'Bone Overlord',
-  'Crystal Guardian', 'Venom Queen', 'Ironclad Sentinel', 'The Devourer', 'Ancient Treant', 'Shadow Assassin', 'Magma Serpent', 'Ice Colossus', 'Thunder Roc', 'Plague Lord',
-  'Dune Behemoth', 'Coral Kraken', 'Sky Titan', 'Obsidian Knight', 'Vine Horror', 'Arcane Construct', 'Fire Djinn', 'Glacier Wurm', 'Tempest Leviathan', 'Crypt King',
-  'Mire Fiend', 'Sun Guardian', 'Void Stalker', 'Earth Titan', 'Blight Serpent', 'Celestial Sentinel', 'Inferno Lord', 'Tidal Horror', 'Wind Emperor', 'Death Revenant',
-  'Ash Tyrant', 'Frost Phoenix', 'Rotten Leviathan', 'Sand Colossus', 'Nightmare Hound', 'Storm Kraken', 'Obsidian Dragon', 'Crystal Warden', 'Void Colossus', 'The Drowned King',
-  'Shadow Serpent', 'The Frost Titan', 'Infernal Colossus', 'Void Lord', 'Storm Leviathan', 'The Blazing Phoenix', 'The Rotten King', 'The Sand Emperor', 'The Stone Dragon', 'The Arcane Titan',
-  'The Abyssal Kraken', 'The Eclipse Lord', 'The Iron Warden', 'The Plague Mother', 'The Celestial Dragon', 'The Blood Behemoth', 'The Tempest King', 'The Crystal Titan', 'The Shadow King', 'The Earth Devourer',
-  'The Solar Colossus', 'The Moon Serpent', 'The Toxic Hydra', 'The Void Phoenix', 'The Chaos Bringer', 'The Ice King', 'The Fire Overlord', 'The Star Eater', 'The Leviathan Queen', 'The Tomb Lord',
-  'The Nether Dragon', 'The Thunder Lord', 'The Coral Monarch', 'The Dune Wyrm', 'The Soul Reaper', 'The Magma King', 'The Sky Empress', 'The Deep One', 'The Infernal Warden', 'The Storm Dragon',
-  'The Shadow Titan', 'The Radiant Seraph', 'The Abyss Lord', 'The World Eater', 'The Time Guardian', 'The Elemental King', 'The Chaos Titan', 'The Celestial Wyrm', 'The Void Monarch', 'The Eternal Colossus',
+  'Stone Golem', 'Dire Wolf Alpha', 'Obsidian Knight', 'The Storm Dragon', 'Crystal Warden', 'Lava Brute', 'Cave Troll', 'Frost Giant', 'Thunder Roc', 'Storm Elemental',
+  'Crystal Guardian', 'Swamp Leviathan', 'Bone Overlord', 'Frost Phoenix', 'Forest Ent', 'Ironclad Sentinel', 'Venom Queen', 'Shadow Assassin', 'Obsidian Dragon', 'Ancient Treant',
+  'Ice Colossus', 'The Devourer', 'Plague Lord', 'Wind Emperor', 'Vine Horror', 'Dune Behemoth', 'Magma Serpent', 'Crypt King', 'The Blazing Phoenix', 'Void Lord',
+  'Sky Titan', 'Glacier Wurm', 'Death Revenant', 'The Stone Dragon', 'The Arcane Titan', 'Arcane Construct', 'Coral Kraken', 'Ash Tyrant', 'The Celestial Dragon', 'The Eclipse Lord',
+  'Sun Guardian', 'Mire Fiend', 'The Drowned King', 'The Void Phoenix', 'The Chaos Bringer', 'Earth Titan', 'Blight Serpent', 'The Rotten King', 'The Nether Dragon', 'The Fire Overlord',
+  'Celestial Sentinel', 'Nightmare Hound', 'The Sand Emperor', 'The Sky Empress', 'The Leviathan Queen', 'Sand Colossus', 'Storm Kraken', 'Inferno Lord', 'The Radiant Seraph', 'The Coral Monarch',
+  'Void Colossus', 'Rotten Leviathan', 'The Shadow King', 'The Celestial Wyrm', 'The Deep One', 'The Frost Titan', 'Shadow Serpent', 'The Plague Mother', 'Fire Djinn', 'The Shadow Titan',
+  'Infernal Colossus', 'The Blood Behemoth', 'The Tempest King', 'Sand Wraith', 'The Abyss Lord', 'The Iron Warden', 'The Toxic Hydra', 'The Tomb Lord', 'Tempest Leviathan', 'The World Eater',
+  'The Crystal Titan', 'The Abyssal Kraken', 'The Ice King', 'Storm Leviathan', 'The Elemental King', 'The Solar Colossus', 'The Moon Serpent', 'The Soul Reaper', 'The Thunder Lord', 'The Chaos Titan',
+  'The Time Guardian', 'The Dune Wyrm', 'The Magma King', 'The Star Eater', 'The Void Monarch', 'The Eternal Colossus', 'The Earth Devourer', 'The Infernal Warden', 'Void Stalker', 'Tidal Horror',
 ];
 
 export function artIndex(n) {

@@ -48,5 +48,9 @@ export function createSupabaseApi(url, key) {
     leaderboard: (scope, period) => rpc('wb_leaderboard', { p_scope: scope, p_period: period }),
     setBadge: (b) => rpc('wb_set_badge', { p_badge: b }),
     card: (pid) => rpc('wb_player_card', { p_pid: pid }),
+    setClass: (c) => rpc('wb_set_class', { p_class: c }),
+    useAbility: () => rpc('wb_use_ability', {}),
+    buyTech: (n) => rpc('wb_buy_tech', { p_node: n }),
+    deleteMe: async () => { const r = await rpc('wb_delete_me', {}); session = null; try { localStorage.removeItem(SKEY); } catch { /* ignore */ } return r; },
   };
 }

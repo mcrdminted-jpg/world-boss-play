@@ -36,5 +36,9 @@ export async function createApi() {
     leaderboard: (scope, period) => raw.leaderboard(scope, period),
     setBadge: (b) => raw.setBadge(b),
     card: (pid) => raw.card(pid),
+    setClass: (c) => raw.setClass(c),
+    useAbility: () => raw.useAbility(),
+    buyTech: (n) => raw.buyTech(n),
+    deleteMe: () => raw.deleteMe(),
   };
 }

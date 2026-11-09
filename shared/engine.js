@@ -4,10 +4,13 @@
 import {
   rollDamage, rollCoins, upgradeCost, nextBossHp, retreatHp, attemptLabel,
   rewardCoins, damagePerHitText, bossType, bossPerk, emptyPerks,
+  UPGRADES, UPGRADE_KEYS, emptyUpgrades, costOf, randInt, CLASSES, CLASS_KEYS, CLASS_SWITCH_GEMS,
+  FREE_SWITCH_DAYS, MONTHLY_SWITCH_DAYS, critChancePct, critMultPct, rollStrike, stochRound,
 } from './combat.js';
 import { enemyName, artPath } from './boss-names.js';
 import { nameError } from './namefilter.js';
 import { earnedBadges, displayBadge } from './badges.js';
+import { NODE, techSum, techUnlocked, techCost } from './tech.js';
 
 export const CONFIG = {
   attemptMs: 7 * 86400000,
@@ -119,7 +122,7 @@ function winActive(w, killer, now) {
   }
   const coins = rewardCoins(a.kind, a.mainNumber);
   for (const [pid, c] of a.contributions) {
-    if (c.damage >= 1n) w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, claimed: false });
+    if (c.damage >= 1n) w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, gems: a.kind === 'main' ? 2n : 1n, claimed: false });
   }
   if (w.depth > 0) {
     // Climb one rung. The rung above (or the numbered boss itself) is re-sized to at most what this
@@ -157,10 +160,29 @@ export function ensurePlayer(w, id, rng, name, now = 0) {
       attackDay: null, attacksUsed: 0, totalDamage: 0n, totalAttacks: 0, highestHit: 0n,
       country: 'US', state: '', zip: '', idem: new Map(),
       perks: emptyPerks(), bonusAttacks: w.config.starterBonusAttacks, nameSet: !!name,
+      up: emptyUpgrades(), cls: null, classFirstAt: null, classSwitchAt: null,
+      abilityDay: null, abilityKind: null, abilityLeft: 0, crits: 0, gemsEarned: 0n,
+      tech: {}, classGems: 0n,
     };
     w.players.set(id, p);
   }
   return p;
+}
+
+// Everything the tech tree adds, in one place. Class Type Damage counts only against the class's preferred type.
+export function statsOf(w, p, attempt) {
+  const t = p.tech || {};
+  const type = bossType(attempt.depth === 0 ? attempt.mainNumber : attempt.mainNumber - 1);
+  const typeBonus = p.cls && CLASSES[p.cls].prefers === type ? techSum(t, 'type') : 0;
+  return {
+    dmgPct: 100 + p.perks.damage + techSum(t, 'damage') + typeBonus + (attempt.kind === 'main' ? 2 * p.up.boss_damage + techSum(t, 'boss') : 0),
+    critChance: critChancePct(p.up.crit_chance, p.perks.crit + techSum(t, 'crit')),
+    critMult: critMultPct(p.up.crit_damage) + techSum(t, 'critdmg'),
+    gemChance: Math.min(100, p.perks.gem + techSum(t, 'gem')),
+    coinPct: p.perks.coins + 5 * p.up.coin_bonus + techSum(t, 'coins'),
+    maxAttacks: w.config.dailyAttacks + techSum(t, 'attacks'),
+    typeBonus,
+  };
 }
 
 function rollover(w, p, now) {
@@ -175,10 +197,37 @@ export function attack(w, id, now, rng, opts = {}) {
   if (opts.key && p.idem.has(opts.key)) return p.idem.get(opts.key);
   rollover(w, p, now);
   const useBonus = !opts.skipLimit && p.bonusAttacks > 0;
-  if (!opts.skipLimit && !useBonus && p.attacksUsed >= w.config.dailyAttacks) return { ok: false, error: 'no_attacks' };
+  const st0 = statsOf(w, p, w.active);
+  if (!opts.skipLimit && !useBonus && p.attacksUsed >= st0.maxAttacks) return { ok: false, error: 'no_attacks' };
   const a = w.active;
-  const rolled = rollDamage(p.damageRank, p.perks.damage, rng);
+  // Daily class ability charges (Titan Strike, Rain of Arrows, Arcane Burst multiply; Shadow Strike forces a crit).
+  let abilityPct = 100, forceCrit = false;
+  if (p.abilityLeft > 0 && p.abilityKind) {
+    const c = CLASSES[p.abilityKind];
+    if (c.mult) abilityPct = c.mult;
+    if (c.crit) forceCrit = true;
+    p.abilityLeft -= 1;
+    if (p.abilityLeft === 0) p.abilityKind = null;
+  }
+  const st = st0;
+  const dmgPct = st.dmgPct;
+  const chance = st.critChance;
+  const mult = st.critMult;
+  const crit = forceCrit || randInt(100, rng) < chance;
+  let rolled = rollStrike(p.damageRank, dmgPct, crit ? mult : 100, abilityPct, rng);
+  // Double Strike: a free follow-up hit with its own crit roll, no ability bonus, no extra gem roll.
+  let double = false, crits = crit ? 1 : 0;
+  if (randInt(100, rng) < 2 * p.up.double_strike) {
+    double = true;
+    const crit2 = randInt(100, rng) < chance;
+    if (crit2) crits += 1;
+    rolled += rollStrike(p.damageRank, dmgPct, crit2 ? mult : 100, 100, rng);
+  }
   const dmg = rolled > a.hp ? a.hp : rolled;
+  // Gems drop only on a critical hit, at the player's gem chance (gem perk now, tech tree later).
+  const gem = crit && randInt(100, rng) < st.gemChance;
+  if (gem) { p.gems += 1n; p.gemsEarned += 1n; }
+  p.crits += crits;
   a.hp -= dmg;
   a.damage += dmg;
   a.attacks += 1;
@@ -187,7 +236,7 @@ export function attack(w, id, now, rng, opts = {}) {
   a.contributions.set(id, c);
   if (useBonus) p.bonusAttacks -= 1;
   else if (!opts.skipLimit) p.attacksUsed += 1;
-  const coins = rollCoins(dmg, p.perks.coins, rng); // 1 coin per credited damage, plus coin perk
+  const coins = rollCoins(dmg, st.coinPct, rng); // 1 coin per credited damage, plus perks, Coin Bonus and tech
   p.coins += coins;
   p.totalDamage += dmg;
   p.totalAttacks += 1;
@@ -198,10 +247,10 @@ export function attack(w, id, now, rng, opts = {}) {
   const res = {
     ok: true, damage: dmg.toString(), coins: coins.toString(), killed: !!kill,
     slayer: kill ? kill.slayer : false, attempt: label, next: kill ? kill.next : null,
-    perk: kill ? kill.perk : null,
-    attacksLeft: p.bonusAttacks + Math.max(0, w.config.dailyAttacks - p.attacksUsed),
+    perk: kill ? kill.perk : null, crit, double, gem, ability: abilityPct !== 100 || forceCrit,
+    attacksLeft: p.bonusAttacks + Math.max(0, st.maxAttacks - p.attacksUsed),
   };
-  w.events.push({ id: ++w.seq, attemptId: a.id, playerId: id, name: p.name, damage: dmg, kill: !!kill, at: now });
+  w.events.push({ id: ++w.seq, attemptId: a.id, playerId: id, name: p.name, damage: dmg, kill: !!kill, crit, at: now });
   if (w.events.length > 500) w.events.splice(0, w.events.length - 500);
   if (opts.key) {
     p.idem.set(opts.key, res);
@@ -247,23 +296,91 @@ export function playerCard(w, pid) {
 export function buyUpgrade(w, id, key) {
   const p = w.players.get(id);
   if (!p) return { ok: false, error: 'no_player' };
-  if (key !== 'base_damage') return { ok: false, error: 'not_available' };
-  const cost = upgradeCost(p.damageRank);
+  if (!UPGRADE_KEYS.includes(key)) return { ok: false, error: 'not_available' };
+  const rank = key === 'base_damage' ? p.damageRank : p.up[key];
+  const max = UPGRADES[key].max;
+  if (max !== null && rank >= max) return { ok: false, error: 'maxed' };
+  const cost = costOf(key, rank);
   if (p.coins < cost) return { ok: false, error: 'not_enough_coins' };
   p.coins -= cost;
-  p.damageRank += 1;
-  return { ok: true, rank: p.damageRank, cost: cost.toString(), nextCost: upgradeCost(p.damageRank).toString() };
+  if (key === 'base_damage') p.damageRank += 1; else p.up[key] += 1;
+  return { ok: true, key, rank: rank + 1, cost: cost.toString(), nextCost: costOf(key, rank + 1).toString() };
+}
+
+// Class rules: first pick is free. Switching is free for 7 days after the first pick, then once per
+// 30 days for free, otherwise 100 gems. Switching never refills attacks or re-arms the daily ability.
+export function classInfo(p, now) {
+  const DAY = 86400000;
+  const freeUntil = p.classFirstAt === null ? null : p.classFirstAt + FREE_SWITCH_DAYS * DAY;
+  const monthlyAt = p.classSwitchAt === null ? 0 : p.classSwitchAt + MONTHLY_SWITCH_DAYS * DAY;
+  const free = p.cls === null || now < freeUntil || now >= monthlyAt;
+  return { freeUntil, nextFreeAt: free ? now : monthlyAt, freeNow: free };
+}
+
+export function setClass(w, id, cls, now) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  if (!CLASS_KEYS.includes(cls)) return { ok: false, error: 'bad_class' };
+  if (p.cls === cls) return { ok: true, cls, paid: '0' };
+  let paid = 0n;
+  if (p.cls === null) p.classFirstAt = now;
+  else {
+    const DAY = 86400000;
+    if (now < p.classFirstAt + FREE_SWITCH_DAYS * DAY) { /* free during the first week */ }
+    else if (p.classSwitchAt === null || now >= p.classSwitchAt + MONTHLY_SWITCH_DAYS * DAY) p.classSwitchAt = now;
+    else if (p.gems >= CLASS_SWITCH_GEMS) { p.gems -= CLASS_SWITCH_GEMS; paid = CLASS_SWITCH_GEMS; }
+    else return { ok: false, error: 'switch_locked', nextFreeAt: p.classSwitchAt + MONTHLY_SWITCH_DAYS * DAY };
+  }
+  p.cls = cls;
+  p.abilityKind = null; p.abilityLeft = 0; // leftover charges do not follow you to the new class
+  // Spec: switching refunds 100% of gems actually spent on the old class tree and clears it.
+  const refund = p.classGems;
+  for (const nid of Object.keys(p.tech)) if (NODE[nid]?.cls) delete p.tech[nid];
+  p.gems += refund; p.classGems = 0n;
+  if (refund > 0n) return { ok: true, cls, paid: paid.toString(), refund: refund.toString() };
+  return { ok: true, cls, paid: paid.toString() };
+}
+
+export function buyTech(w, id, nodeId) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  const n = NODE[nodeId];
+  if (!n) return { ok: false, error: 'bad_node' };
+  if (n.cls && !p.cls) return { ok: false, error: 'no_class' };
+  const rank = p.tech[nodeId] || 0;
+  if (rank >= n.ranks) return { ok: false, error: 'maxed' };
+  if (!techUnlocked(p.tech, nodeId)) return { ok: false, error: 'locked' };
+  const cost = techCost(nodeId);
+  if (p.gems < cost) return { ok: false, error: 'not_enough_gems' };
+  p.gems -= cost;
+  p.tech[nodeId] = rank + 1;
+  if (n.cls) p.classGems += cost;
+  return { ok: true, node: nodeId, rank: rank + 1, cost: cost.toString() };
+}
+
+export function useAbility(w, id, now) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  if (!p.cls) return { ok: false, error: 'no_class' };
+  const k = dayKey(now);
+  if (p.abilityDay === k) return { ok: false, error: 'used_today' };
+  p.abilityDay = k;
+  const c = CLASSES[p.cls];
+  if (c.extra) p.bonusAttacks += c.extra;
+  else { p.abilityKind = p.cls; p.abilityLeft = c.charges; }
+  return { ok: true, cls: p.cls, ability: c.ability };
 }
 
 export function claimRewards(w, id) {
   const p = w.players.get(id);
   if (!p) return { ok: false, error: 'no_player' };
-  let total = 0n, n = 0;
+  let total = 0n, gems = 0n, n = 0;
   for (const r of w.ledger) {
-    if (r.playerId === id && !r.claimed) { r.claimed = true; total += r.coins; n += 1; }
+    if (r.playerId === id && !r.claimed) { r.claimed = true; total += r.coins; gems += r.gems || 0n; n += 1; }
   }
   p.coins += total;
-  return { ok: true, claimed: n, coins: total.toString() };
+  p.gems += gems;
+  return { ok: true, claimed: n, coins: total.toString(), gems: gems.toString() };
 }
 
 const clean = (s, max) => String(s || '').trim().slice(0, max);
@@ -339,7 +456,7 @@ export function publicState(w, id, now) {
     player: p ? {
       id: p.id, name: p.name, coins: p.coins.toString(), gems: p.gems.toString(), damageRank: p.damageRank,
       damagePerHit: damagePerHitText(p.damageRank, p.perks.damage), nextCost: upgradeCost(p.damageRank).toString(),
-      attacksLeft: p.bonusAttacks + Math.max(0, w.config.dailyAttacks - p.attacksUsed), attacksMax: w.config.dailyAttacks,
+      attacksLeft: p.bonusAttacks + Math.max(0, statsOf(w, p, a).maxAttacks - p.attacksUsed), attacksMax: statsOf(w, p, a).maxAttacks,
       bonusAttacks: p.bonusAttacks, nameSet: p.nameSet, perks: { ...p.perks },
       perkCount: w.perkGrants.filter((g) => g.playerId === id).length,
       pid: p.pid, badgeChoice: p.badge, badge: badgeOf(w, p),
@@ -347,14 +464,26 @@ export function publicState(w, id, now) {
       share: shareOf(w, a, id),
       totalDamage: p.totalDamage.toString(), totalAttacks: p.totalAttacks, highestHit: p.highestHit.toString(),
       country: p.country, state: p.state, zip: p.zip,
-      pendingRewards: { count: pending.length, coins: pending.reduce((s, r) => s + r.coins, 0n).toString() },
+      pendingRewards: { count: pending.length, coins: pending.reduce((s, r) => s + r.coins, 0n).toString(), gems: pending.reduce((s, r) => s + (r.gems || 0n), 0n).toString() },
       slayer: [...w.slayers].filter(([, pid]) => pid === id).map(([n]) => n),
+      upgrades: Object.fromEntries(UPGRADE_KEYS.map((key) => {
+        const rank = key === 'base_damage' ? p.damageRank : p.up[key];
+        const max = UPGRADES[key].max;
+        return [key, { rank, max, cost: max !== null && rank >= max ? null : costOf(key, rank).toString() }];
+      })),
+      critChance: statsOf(w, p, a).critChance, critMult: statsOf(w, p, a).critMult,
+      coinBonus: statsOf(w, p, a).coinPct, gemChance: statsOf(w, p, a).gemChance, doubleStrike: 2 * p.up.double_strike,
+      tech: { ...p.tech }, classGems: p.classGems.toString(), typeBonus: statsOf(w, p, a).typeBonus, dmgPct: statsOf(w, p, a).dmgPct,
+      bossDamage: 2 * p.up.boss_damage, crits: p.crits, gemsEarned: p.gemsEarned.toString(),
+      cls: p.cls, classFreeUntil: classInfo(p, now).freeUntil, classNextFreeAt: classInfo(p, now).nextFreeAt,
+      classSwitchFree: classInfo(p, now).freeNow,
+      abilityReady: !!p.cls && p.abilityDay !== dayKey(now), abilityKind: p.abilityKind, abilityLeft: p.abilityLeft,
     } : null,
     feed: w.events.slice(-w.config.feedSize).reverse().map((e) => {
       const fp = w.players.get(e.playerId);
       const att = w.attempts.find((x) => x.id === e.attemptId);
       return {
-        pid: fp ? fp.pid : null, name: e.name, damage: e.damage.toString(), kill: e.kill, at: e.at,
+        pid: fp ? fp.pid : null, name: e.name, damage: e.damage.toString(), kill: e.kill, crit: !!e.crit, at: e.at, cls: fp ? fp.cls : null,
         badge: fp ? badgeOf(w, fp) : null, share: shareOf(w, att, e.playerId),
       };
     }),

@@ -1,6 +1,7 @@
 import { h } from './dom.js';
 import { formatBig } from '../shared/combat.js';
 import { nameTag, openCard } from './players.js';
+import { icon } from './icons.js';
 
 const SCOPES = [['local', 'Local'], ['state', 'State'], ['country', 'Country'], ['world', 'World']];
 const PERIODS = [['current', 'This boss'], ['all', 'All time']];
@@ -10,14 +11,14 @@ export function createBoards(api, goProfile) {
   const body = h('div', { class: 'lb card' });
   const scopeSeg = h('div', { class: 'seg' });
   const periodSeg = h('div', { class: 'seg' });
-  const el = h('div', { class: 'scroll' }, scopeSeg, periodSeg, body);
+  const el = h('div', { class: 'scroll boards' }, h('div', { class: 'store-head' }, icon('trophy', 28), h('h2', null, 'Leaderboard')), scopeSeg, periodSeg, body);
 
   function seg(root, items, cur, set) {
     root.replaceChildren(...items.map(([k, label]) => h('button', { class: k === cur ? 'on' : '', onclick: () => { set(k); render(); } }, label)));
   }
 
   const row = (x, me) => h('div', { class: `row${me ? ' me' : ''}`, onclick: () => openCard(api, x.pid) },
-    h('span', { class: 'n' }, x.rank), h('span', { class: 'nm' }, nameTag(x.name, x.badge, x.share)), h('span', { class: 'd' }, formatBig(x.damage)));
+    h('span', { class: `n${x.rank <= 3 ? ` medal m${x.rank}` : ''}` }, x.rank), h('span', { class: 'nm' }, nameTag(x.name, x.badge, x.share)), h('span', { class: 'd' }, formatBig(x.damage)));
 
   async function render() {
     seg(scopeSeg, SCOPES, scope, (k) => { scope = k; });

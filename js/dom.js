@@ -1,3 +1,4 @@
+import { getSetting } from './sfx.js';
 // Tiny DOM helpers. Everything user-supplied (player names) goes in through text nodes, never innerHTML.
 export function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -43,7 +44,7 @@ export function openSheet(...content) {
   return close;
 }
 
-export const vibrate = (ms) => { try { navigator.vibrate?.(ms); } catch { /* not supported */ } };
+export const vibrate = (ms) => { if (!getSetting('vibration')) return; try { navigator.vibrate?.(ms); } catch { /* not supported */ } };
 
 export function ago(ms, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - ms) / 1000));
