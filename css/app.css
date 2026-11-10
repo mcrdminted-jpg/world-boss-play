@@ -649,3 +649,10 @@ html, body { background: #060a18; }
 .stage > .hp { z-index: 6; }
 .stage .sparks { z-index: 5; }
 .stage .fx, .stage .float, .stage .banner { z-index: 7; }
+
+/* rewarded ads */
+.boost.ad:disabled { opacity: .55; }
+.boost.ad.done .watch { background: #2a3260; color: #8a95c4; }
+.left .ad-plus { margin-top: 4px; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 7px; border: 0;
+  background: linear-gradient(180deg, #2fbf71, #1d8a4f); color: #fff; }
+.left .boost-tag { margin-top: 3px; font-size: 10px; font-weight: 800; color: #ffcf5a; }

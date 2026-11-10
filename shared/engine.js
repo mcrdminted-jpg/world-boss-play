@@ -23,6 +23,9 @@ export const CONFIG = {
   leaderboardSize: 50,
 };
 
+// Rewarded ads (Store spots). Mirrors wb_ad_reward in supabase/migrations/0007_ad_rewards.sql.
+export const AD_REWARDS = { attack: { max: 5 }, damage: { max: 10 }, gems: { max: 5, each: 1 } };
+
 const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: CONFIG.tz, year: 'numeric', month: '2-digit', day: '2-digit' });
 export const dayKey = (ms) => dayFmt.format(new Date(ms));
 
@@ -162,7 +165,7 @@ export function ensurePlayer(w, id, rng, name, now = 0) {
       perks: emptyPerks(), bonusAttacks: w.config.starterBonusAttacks, nameSet: !!name,
       up: emptyUpgrades(), cls: null, classFirstAt: null, classSwitchAt: null,
       abilityDay: null, abilityKind: null, abilityLeft: 0, crits: 0, gemsEarned: 0n,
-      tech: {}, classGems: 0n,
+      tech: {}, classGems: 0n, adDay: null, ads: { attack: 0, damage: 0, gems: 0 }, boostLeft: 0,
     };
     w.players.set(id, p);
   }
@@ -209,19 +212,23 @@ export function attack(w, id, now, rng, opts = {}) {
     p.abilityLeft -= 1;
     if (p.abilityLeft === 0) p.abilityKind = null;
   }
+  // Rewarded-ad 2x Damage charge doubles this attack (both strikes of a Double Strike).
+  const boost = (p.boostLeft || 0) > 0;
+  if (boost) p.boostLeft -= 1;
+  const boostPct = boost ? 2 : 1;
   const st = st0;
   const dmgPct = st.dmgPct;
   const chance = st.critChance;
   const mult = st.critMult;
   const crit = forceCrit || randInt(100, rng) < chance;
-  let rolled = rollStrike(p.damageRank, dmgPct, crit ? mult : 100, abilityPct, rng);
+  let rolled = rollStrike(p.damageRank, dmgPct, crit ? mult : 100, abilityPct * boostPct, rng);
   // Double Strike: a free follow-up hit with its own crit roll, no ability bonus, no extra gem roll.
   let double = false, crits = crit ? 1 : 0;
   if (randInt(100, rng) < 2 * p.up.double_strike) {
     double = true;
     const crit2 = randInt(100, rng) < chance;
     if (crit2) crits += 1;
-    rolled += rollStrike(p.damageRank, dmgPct, crit2 ? mult : 100, 100, rng);
+    rolled += rollStrike(p.damageRank, dmgPct, crit2 ? mult : 100, 100 * boostPct, rng);
   }
   const dmg = rolled > a.hp ? a.hp : rolled;
   // Gems drop only on a critical hit, at the player's gem chance (gem perk now, tech tree later).
@@ -247,7 +254,7 @@ export function attack(w, id, now, rng, opts = {}) {
   const res = {
     ok: true, damage: dmg.toString(), coins: coins.toString(), killed: !!kill,
     slayer: kill ? kill.slayer : false, attempt: label, next: kill ? kill.next : null,
-    perk: kill ? kill.perk : null, crit, double, gem, ability: abilityPct !== 100 || forceCrit,
+    perk: kill ? kill.perk : null, crit, double, gem, ability: abilityPct !== 100 || forceCrit, boost,
     attacksLeft: p.bonusAttacks + Math.max(0, st.maxAttacks - p.attacksUsed),
   };
   w.events.push({ id: ++w.seq, attemptId: a.id, playerId: id, name: p.name, damage: dmg, kill: !!kill, crit, at: now });
@@ -371,6 +378,30 @@ export function useAbility(w, id, now) {
   return { ok: true, cls: p.cls, ability: c.ability };
 }
 
+export function adsInfo(p, now) {
+  const fresh = !p || p.adDay !== dayKey(now);
+  const used = (k) => (fresh ? 0 : p.ads[k]);
+  return {
+    attack: { max: AD_REWARDS.attack.max, left: Math.max(0, AD_REWARDS.attack.max - used('attack')) },
+    damage: { max: AD_REWARDS.damage.max, left: Math.max(0, AD_REWARDS.damage.max - used('damage')) },
+    gems: { max: AD_REWARDS.gems.max, left: Math.max(0, AD_REWARDS.gems.max - used('gems')), each: AD_REWARDS.gems.each },
+  };
+}
+
+export function adReward(w, id, kind, now) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  if (!AD_REWARDS[kind]) return { ok: false, error: 'bad_kind' };
+  const k = dayKey(now);
+  if (p.adDay !== k) { p.adDay = k; p.ads = { attack: 0, damage: 0, gems: 0 }; }
+  if (p.ads[kind] >= AD_REWARDS[kind].max) return { ok: false, error: 'ad_limit', ads: adsInfo(p, now) };
+  p.ads[kind] += 1;
+  if (kind === 'attack') p.bonusAttacks += 1;
+  else if (kind === 'damage') p.boostLeft = (p.boostLeft || 0) + 1;
+  else { const g = BigInt(AD_REWARDS.gems.each); p.gems += g; p.gemsEarned += g; }
+  return { ok: true, kind, ads: adsInfo(p, now) };
+}
+
 export function claimRewards(w, id) {
   const p = w.players.get(id);
   if (!p) return { ok: false, error: 'no_player' };
@@ -478,6 +509,7 @@ export function publicState(w, id, now) {
       cls: p.cls, classFreeUntil: classInfo(p, now).freeUntil, classNextFreeAt: classInfo(p, now).nextFreeAt,
       classSwitchFree: classInfo(p, now).freeNow,
       abilityReady: !!p.cls && p.abilityDay !== dayKey(now), abilityKind: p.abilityKind, abilityLeft: p.abilityLeft,
+      ads: adsInfo(p, now), boostLeft: p.boostLeft || 0,
     } : null,
     feed: w.events.slice(-w.config.feedSize).reverse().map((e) => {
       const fp = w.players.get(e.playerId);

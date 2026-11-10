@@ -2,7 +2,7 @@
 // and tuned without a server. Add ?dev=1 for time-travel tools (window.wbDev).
 import {
   createWorld, ensurePlayer, attack, buyUpgrade, claimRewards, setProfile, leaderboard, publicState, resolveExpiry,
-  setBadge, playerCard, setClass, useAbility, buyTech,
+  setBadge, playerCard, setClass, useAbility, buyTech, adReward,
 } from '../shared/engine.js';
 import { serialize, deserialize } from '../shared/serialize.js';
 
@@ -73,6 +73,7 @@ export function createMock() {
     setClass: (c) => delay(setClass(w, ME, c, now())),
     useAbility: () => delay(useAbility(w, ME, now())),
     buyTech: (n) => delay(buyTech(w, ME, n)),
+    adReward: (k) => delay(JSON.parse(JSON.stringify(adReward(w, ME, k, now()), (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))),
     deleteMe: () => { try { localStorage.removeItem(KEY); } catch { /* ignore */ } return delay({ ok: true }); },
     card: (pid) => delay(JSON.parse(JSON.stringify(playerCard(w, pid), (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))),
     leaderboard: (scope, period) => {

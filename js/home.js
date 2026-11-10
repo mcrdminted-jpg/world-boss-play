@@ -5,6 +5,7 @@ import { classGlyph, openClassPicker, CLASS_COLOR } from './classes.js';
 import { icon } from './icons.js';
 import { createSparks, flyIcons } from './fx.js';
 import { sfx } from './sfx.js';
+import { adsSupported, playRewarded } from './ads.js';
 
 const CLASS_SPARK = { warrior: ['#ffe6a0', '#ffb347', '#fff'], barbarian: ['#ff7a59', '#ffb347', '#ff3b2f'], rogue: ['#d1a8ff', '#9a5cff', '#fff'], archer: ['#a8ffb8', '#4fdc72', '#fff'], mage: ['#9fd8ff', '#4fa8ff', '#fff'] };
 
@@ -65,6 +66,8 @@ export function createHome(api, refresh, goProfile, goBoards) {
   const sparks = createSparks(stage);
   let lastPct = null;
   const leftNum = h('b'); const leftSub = h('small');
+  let adBusy = false;
+  const adPlus = h('button', { class: 'ad-plus', hidden: true, onclick: onAdPlus }, 'Watch ad: +1');
   const attackBtn = h('button', { class: 'attack', onclick: onAttack }, icon('swords', 30, '#ffe7a0'), h('span', null, 'ATTACK'));
   const abilityBtn = h('button', { class: 'ability', onclick: onAbility });
   const feed = h('div', { class: 'feed-rows' });
@@ -83,7 +86,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
     h('div', { class: 'boss-tags' }, typeEl, matchEl, rewardEl, claimBtn),
     stage,
     h('div', { class: 'actions' },
-      h('div', { class: 'left' }, h('small', null, 'Attacks Left'), h('div', { class: 'left-num' }, icon('swords', 18), leftNum), leftSub),
+      h('div', { class: 'left' }, h('small', null, 'Attacks Left'), h('div', { class: 'left-num' }, icon('swords', 18), leftNum), leftSub, adPlus),
       attackBtn,
       abilityBtn),
     guide,
@@ -232,7 +235,12 @@ export function createHome(api, refresh, goProfile, goBoards) {
     if (!busy) setArt(b);
     if (p) {
       leftNum.textContent = `${Math.max(0, p.attacksLeft - queued - (busy ? 1 : 0) - done)}`;
-      leftSub.textContent = p.bonusAttacks > 0 ? `${p.attacksMax} daily + ${p.bonusAttacks} bonus` : `of ${p.attacksMax} today`;
+      leftSub.textContent = p.boostLeft > 0 ? `2x Damage: ${p.boostLeft} hit${p.boostLeft === 1 ? '' : 's'}`
+        : p.bonusAttacks > 0 ? `${p.attacksMax} daily + ${p.bonusAttacks} bonus` : `of ${p.attacksMax} today`;
+      leftSub.classList.toggle('boost-tag', p.boostLeft > 0);
+      adPlus.hidden = !(adsSupported() && p.attacksLeft <= 0 && p.ads && p.ads.attack && p.ads.attack.left > 0);
+      leftSub.hidden = !adPlus.hidden;
+      adPlus.disabled = adBusy;
       attackBtn.disabled = p.attacksLeft <= 0;
       const pr = p.pendingRewards;
       claimBtn.hidden = !(pr && pr.count > 0);
@@ -262,6 +270,18 @@ export function createHome(api, refresh, goProfile, goBoards) {
     renderFeed();
     renderGuide();
     tick();
+  }
+
+  async function onAdPlus() {
+    if (adBusy) return;
+    adBusy = true; adPlus.disabled = true; adPlus.textContent = 'Loading...';
+    try {
+      if (!(await playRewarded())) { toast('Ad closed early, no reward.'); return; }
+      const r = await api.adReward('attack');
+      if (!r || !r.ok) { toast(r && r.error === 'ad_limit' ? 'Daily ad limit reached. Back tomorrow.' : 'Reward failed. Try again.'); return; }
+      toast('+1 attack added.'); sfx.buy();
+    } catch { toast('No ad available right now. Try again in a minute.'); }
+    finally { adBusy = false; adPlus.textContent = 'Watch ad: +1'; await refresh(); }
   }
 
   function paintAbility(p) {

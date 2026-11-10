@@ -39,6 +39,7 @@ export async function createApi() {
     setClass: (c) => raw.setClass(c),
     useAbility: () => raw.useAbility(),
     buyTech: (n) => raw.buyTech(n),
+    adReward: (k) => raw.adReward(k),
     deleteMe: () => raw.deleteMe(),
   };
 }

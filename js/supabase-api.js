@@ -51,6 +51,7 @@ export function createSupabaseApi(url, key) {
     setClass: (c) => rpc('wb_set_class', { p_class: c }),
     useAbility: () => rpc('wb_use_ability', {}),
     buyTech: (n) => rpc('wb_buy_tech', { p_node: n }),
+    adReward: (k) => rpc('wb_ad_reward', { p_kind: k }),
     deleteMe: async () => { const r = await rpc('wb_delete_me', {}); session = null; try { localStorage.removeItem(SKEY); } catch { /* ignore */ } return r; },
   };
 }
