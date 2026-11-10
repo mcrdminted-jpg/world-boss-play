@@ -716,3 +716,15 @@ html, body { background: #060a18; }
 .ad-boost.ready { border-color: #ffcf5a; box-shadow: 0 0 12px #ffcf5a88; opacity: 1 !important; }
 .ad-boost.ready span { color: #ffcf5a; }
 .earn-row.ad-row .btn { margin-left: auto; flex: none; }
+
+/* hit stream: each line lives 30s and fades over its last 5 */
+@keyframes hitfade { 0%, 83% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes hitin { from { transform: translateY(10px); } to { transform: none; } }
+.hit-stream .hit.new { animation: none; }
+
+/* boss header: title, name and time stacked and centered; no timer box beside the title */
+.boss-head { display: block; }
+.boss-head .titles { text-align: center; min-width: 0; }
+.boss-head h1, .boss-head .bossname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.boss-head .timeline { display: inline-flex; align-items: center; gap: 4px; margin-top: 1px; font-size: 11.5px; font-weight: 700; color: #e7c27a; font-variant-numeric: tabular-nums; }
+.boss-head .timeline b { font-weight: 700; }

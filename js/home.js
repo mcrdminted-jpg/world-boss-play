@@ -67,7 +67,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
   // Live hit stream on the arena, like a stream chat: last 10 hits, newest at the bottom.
   const feed = h('div', { class: 'hit-stream' });
   const boardBtn = h('button', { class: 'board-btn', 'aria-label': 'Leaderboard', onclick: () => goBoards && goBoards() }, icon('trophy', 18, '#ffcf5a'));
-  let feedTop = '';
+  let feedTop = null;
   const stage = h('div', { class: 'stage' }, h('div', { class: 'arena' }), h('div', { class: 'aura' }), embers(), art,
     feed, boardBtn, adBoost, h('div', { class: 'hp' }, hpGhost, hpFill, hpText, hpPct));
   const sparks = createSparks(stage);
@@ -88,7 +88,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
   }));
   const tagsEl = h('div', { class: 'boss-tags' }, matchEl, rewardEl, claimBtn);
   const el = h('section', { class: 'home' },
-    h('div', { class: 'boss-head' }, h('div', { class: 'titles' }, labelEl, nameEl), h('div', { class: 'timer' }, h('small', null, 'Time Left'), timerEl)),
+    h('div', { class: 'boss-head' }, h('div', { class: 'titles' }, labelEl, nameEl, h('div', { class: 'timeline' }, icon('clock', 12), timerEl))),
     tagsEl,
     stage,
     h('div', { class: 'actions' },
@@ -366,19 +366,30 @@ export function createHome(api, refresh, goProfile, goBoards) {
   }
 
   // Name color = that player's share of THIS boss. Tap a line for their stat card.
+  // Each hit stays 30 seconds, fading out over its last 5, then leaves the stream.
+  const HIT_TTL = 30000;
+  let feedLive = 0;
+  const liveHits = (nowMs) => s.feed.slice(0, 10).filter((f) => nowMs - f.at < HIT_TTL);
   function renderFeed() {
-    const rows = s.feed.slice(0, 10).reverse();
+    const nowMs = Date.now() + s.skew;
+    const rows = liveHits(nowMs).reverse();
+    feedLive = rows.length;
     const top = rows.length ? `${rows[rows.length - 1].pid}|${rows[rows.length - 1].at}` : '';
-    const fresh = top !== feedTop && feedTop !== '';
+    const fresh = top !== feedTop && top !== '' && feedTop !== null;
     feedTop = top;
-    feed.replaceChildren(...rows.map((f, i) =>
-      h('div', { class: `hit${f.kill ? ' kill' : ''}${f.crit ? ' crit' : ''}${fresh && i === rows.length - 1 ? ' new' : ''}`, onclick: () => openCard(api, f.pid) },
-        nameTag(f.name, null, f.share), h('em', null, `${f.crit ? 'CRIT ' : ''}${formatBig(f.damage)}${f.kill ? ' KILL' : ''}`))));
+    feed.replaceChildren(...rows.map((f, i) => {
+      const age = Math.max(0, (nowMs - f.at) / 1000).toFixed(2);
+      const isNew = fresh && i === rows.length - 1;
+      return h('div', { class: `hit${f.kill ? ' kill' : ''}${f.crit ? ' crit' : ''}`,
+        style: `animation: hitfade 30s linear -${age}s forwards${isNew ? ', hitin .28s ease-out' : ''}`, onclick: () => openCard(api, f.pid) },
+        nameTag(f.name, null, f.share), h('em', null, `${f.crit ? 'CRIT ' : ''}${formatBig(f.damage)}${f.kill ? ' KILL' : ''}`));
+    }));
   }
 
   function tick() {
     if (!s) return;
-    timerEl.textContent = countdown(s.boss.endsAt - (Date.now() + s.skew));
+    timerEl.textContent = `${countdown(s.boss.endsAt - (Date.now() + s.skew))} left`;
+    if (liveHits(Date.now() + s.skew).length !== feedLive) renderFeed();
   }
 
   function float(text, cls) {

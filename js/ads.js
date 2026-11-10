@@ -11,11 +11,19 @@ const TEST_UNITS = { ios: 'ca-app-pub-3940256099942544/1712485313', android: 'ca
 const TESTING = /[?&]testads=1/.test(location.search);
 
 const unit = () => (TESTING ? TEST_UNITS[PLATFORM] : UNITS[PLATFORM]) || null;
-export const adsSupported = () => NATIVE && !!unit() && !!(C && C.registerPlugin);
+// The game ships as plain files with no bundler, so @capacitor/core's registerPlugin is not on the page.
+// The native bridge itself (nativePromise / addListener) is always there in the app, and is all we need.
+export const adsSupported = () => NATIVE && !!unit() && !!(C && (C.registerPlugin || C.nativePromise));
 
 let plugin = null, ready = null;
 function admob() {
-  if (!plugin) plugin = C.registerPlugin('AdMob');
+  if (plugin) return plugin;
+  if (C.registerPlugin) { plugin = C.registerPlugin('AdMob'); return plugin; }
+  plugin = new Proxy({}, { get: (_t, method) => {
+    if (method === 'then') return undefined; // not a promise
+    if (method === 'addListener') return (eventName, cb) => C.addListener('AdMob', eventName, cb);
+    return (options) => C.nativePromise('AdMob', method, options || {});
+  } });
   return plugin;
 }
 

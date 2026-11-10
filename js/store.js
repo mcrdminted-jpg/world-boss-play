@@ -49,7 +49,7 @@ export function createStore(api, refresh, goTree) {
           h('div', { class: 'earn-row' }, icon('trophy', 26), h('div', null, h('b', null, 'Pending rewards'), h('small', null, `${pr.count || 0} waiting: ${formatBig(pr.coins || '0')} coins, ${formatBig(pr.gems || '0')} gems. Claim on Home.`))),
           h('button', { class: 'btn', onclick: goTree }, 'Spend gems in the Tech Tree')));
     }
-    el.replaceChildren(h('div', { class: 'store-head' }, icon('chest', 30), h('h2', null, 'Store')), tabs, ...[body].flat().filter(Boolean));
+    el.replaceChildren(...[h('div', { class: 'store-head' }, icon('chest', 30), h('h2', null, 'Store')), tabs, body].flat().filter(Boolean));
   }
 
   // The only ad in the Store: a free gem. +1 Attack and 2x Damage ads live on the Home screen.
