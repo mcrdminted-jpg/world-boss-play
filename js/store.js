@@ -7,7 +7,6 @@ import { adsSupported, playRewarded } from './ads.js';
 import { sfx } from './sfx.js';
 
 const PACKS = [['100', '$0.99', ''], ['550', '$4.99', '10% bonus'], ['1,200', '$9.99', '20% bonus'], ['2,800', '$19.99', '30% bonus'], ['7,500', '$49.99', '50% bonus'], ['16,000', '$99.99', '60% bonus']];
-const ADS = [['attack', '+1 Attack', 'swords'], ['damage', '2x Damage', 'burst'], ['gems', 'Gems', 'gem']];
 const AD_DONE = { attack: '+1 attack added.', damage: 'Your next attack does 2x damage.', gems: 'Gem added.' };
 const BOOSTS = [['Lucky Boost', 'clover', '+50% gem drops', '1 hour'], ['Coin Boost', 'coin', '+100% coins', '1 hour'], ['Crit Boost', 'burst', '+100% crit damage', '1 hour']];
 
@@ -17,12 +16,12 @@ const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && windo
 export function createStore(api, refresh, goTree) {
   const el = h('div', { class: 'scroll store' });
   const LIVE_ADS = adsSupported();
-  let tab = NATIVE ? (LIVE_ADS ? 'boosts' : 'earn') : 'gems';
+  let tab = NATIVE ? 'earn' : 'gems';
   let watching = false;
   function render(s) {
     const p = s.player; if (!p) return;
     const soon = () => toast('Opens with the App Store release.');
-    const tabList = NATIVE ? (LIVE_ADS ? [['boosts', 'Ad Boosts'], ['earn', 'Earn free']] : null) : [['gems', 'Gems'], ['boosts', 'Boosts'], ['earn', 'Earn free']];
+    const tabList = NATIVE ? null : [['gems', 'Gems'], ['boosts', 'Boosts'], ['earn', 'Earn free']];
     const tabs = !tabList ? null : h('div', { class: 'seg' }, tabList.map(([k, l]) =>
       h('button', { class: k === tab ? 'on' : '', onclick: () => { tab = k; render(s); } }, l)));
     let body;
@@ -35,20 +34,6 @@ export function createStore(api, refresh, goTree) {
           h('span', { class: 'pack-price' }, price), h('em', { class: 'soon-tag' }, 'Soon')))));
     } else if (tab === 'boosts') {
       body = [
-        h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Ad Boosts'), h('small', null, 'Daily')),
-          h('div', { class: 'boosts' }, ADS.map(([kind, n, ic]) => {
-            const a = (p.ads && p.ads[kind]) || { left: 0, max: 0 };
-            const used = a.max - a.left;
-            if (!LIVE_ADS) {
-              return h('button', { class: 'boost ad', onclick: soon },
-                h('b', null, n), icon(ic, 30), h('small', null, `0 / ${a.max || '?'} today`), h('span', { class: 'watch' }, 'Watch ad'), h('em', { class: 'soon-tag' }, 'Soon'));
-            }
-            const out = a.left <= 0;
-            return h('button', { class: `boost ad${out ? ' done' : ''}`, disabled: out || watching, onclick: () => watch(kind, s) },
-              h('b', null, n), icon(ic, 30), h('small', null, `${used} / ${a.max} today`),
-              h('span', { class: 'watch' }, out ? 'Back tomorrow' : watching ? 'Loading...' : 'Watch ad'));
-          })),
-          LIVE_ADS && p.boostLeft > 0 ? h('p', { class: 'fine' }, `2x Damage ready on your next ${p.boostLeft === 1 ? 'attack' : `${p.boostLeft} attacks`}.`) : null),
         NATIVE ? null : h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Special Items'), h('small', null, 'Temporary, gems')),
           h('div', { class: 'boosts' }, BOOSTS.map(([n, ic, eff, dur]) => h('button', { class: 'boost', onclick: soon },
             h('b', null, n), icon(ic, 30), h('small', null, eff), h('small', null, dur), h('span', { class: 'price' }, icon('gem', 13), '400'), h('em', { class: 'soon-tag' }, 'Soon'))))),
@@ -58,12 +43,23 @@ export function createStore(api, refresh, goTree) {
       const pr = p.pendingRewards || {};
       body = h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Earn gems free'), h('small', null, 'Live now')),
         h('div', { class: 'earn' },
+          gemAdRow(p, s),
           h('div', { class: 'earn-row' }, icon('gem', 26), h('div', null, h('b', null, 'Critical hits'), h('small', null, `Every crit has a ${p.gemChance}% chance to drop a gem. Raise it in the Tech Tree.`))),
           h('div', { class: 'earn-row' }, icon('skull', 26), h('div', null, h('b', null, 'Help kill bosses'), h('small', null, '2 gems for every World Boss you hit before it falls, 1 for each Lieutenant.'))),
           h('div', { class: 'earn-row' }, icon('trophy', 26), h('div', null, h('b', null, 'Pending rewards'), h('small', null, `${pr.count || 0} waiting: ${formatBig(pr.coins || '0')} coins, ${formatBig(pr.gems || '0')} gems. Claim on Home.`))),
           h('button', { class: 'btn', onclick: goTree }, 'Spend gems in the Tech Tree')));
     }
     el.replaceChildren(h('div', { class: 'store-head' }, icon('chest', 30), h('h2', null, 'Store')), tabs, ...[body].flat().filter(Boolean));
+  }
+
+  // The only ad in the Store: a free gem. +1 Attack and 2x Damage ads live on the Home screen.
+  function gemAdRow(p, s) {
+    const a = p.ads && p.ads.gems;
+    if (!LIVE_ADS || !a) return null;
+    const out = a.left <= 0;
+    return h('div', { class: 'earn-row ad-row' }, icon('gem', 26),
+      h('div', null, h('b', null, `Watch an ad: +${a.each} gem`), h('small', null, `${a.max - a.left} of ${a.max} watched today.`)),
+      h('button', { class: 'btn gold', disabled: out || watching, onclick: () => watch('gems', s) }, out ? 'Tomorrow' : watching ? 'Loading...' : 'Watch ad'));
   }
 
   async function watch(kind, s) {

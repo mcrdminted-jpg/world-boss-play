@@ -11,7 +11,7 @@ const CLASS_SPARK = { warrior: ['#ffe6a0', '#ffb347', '#fff'], barbarian: ['#ff7
 
 const TILES = ['base_damage', 'crit_chance', 'crit_damage', 'coin_bonus', 'double_strike', 'boss_damage'];
 const TILE_ICON = { base_damage: 'sword', crit_chance: 'clover', crit_damage: 'burst', coin_bonus: 'coin', double_strike: 'double', boss_damage: 'skull' };
-const TILE_SHORT = { base_damage: 'Damage', crit_chance: 'Crit Chance', crit_damage: 'Crit Damage', coin_bonus: 'Coin Bonus', double_strike: 'Double Hit', boss_damage: 'Boss Damage' };
+const TILE_SHORT = { base_damage: 'Damage', crit_chance: 'Crit %', crit_damage: 'Crit Dmg', coin_bonus: 'Coins', double_strike: 'Double', boss_damage: 'Boss Dmg' };
 const TILE_HELP = {
   base_damage: 'Every rank multiplies your base damage by 1.25. Fractions are rounded randomly so the average is exact.',
   crit_chance: '+2% critical chance per rank, up to +50% from coins. The tech tree adds up to another 50%. Gems only drop on critical hits.',
@@ -54,23 +54,28 @@ export function createHome(api, refresh, goProfile, goBoards) {
 
   const nameEl = h('small', { class: 'bossname' }); const labelEl = h('h1');
   const timerEl = h('b');
-  const typeEl = h('span', { class: 'chip type' }); const rewardEl = h('span', { class: 'chip gold' });
+  const rewardEl = h('span', { class: 'chip gold' });
   const matchEl = h('span', { class: 'chip match', hidden: true });
-  const statsEl = h('div', { class: 'stats' });
   const guide = h('div', { class: 'guide', hidden: true });
   const claimBtn = h('button', { class: 'claim', hidden: true, onclick: onClaim });
   const art = h('div', { class: 'art' });
   const hpFill = h('b'); const hpGhost = h('i', { class: 'ghost' }); const hpText = h('span'); const hpPct = h('em');
+  // Ads on Home: "More attacks?" under the ATTACK row once today's attacks are used, and 2x Damage on the arena under the trophy.
+  const moreSub = h('small');
+  const adMore = h('button', { class: 'ad-more', hidden: true, onclick: () => watchAd('attack') }, h('b', null, 'More attacks?'), h('span', null, 'Watch ad'), moreSub);
+  const adBoost = h('button', { class: 'ad-boost', hidden: true, onclick: () => watchAd('damage') });
+  // Live hit stream on the arena, like a stream chat: last 10 hits, newest at the bottom.
+  const feed = h('div', { class: 'hit-stream' });
+  const boardBtn = h('button', { class: 'board-btn', 'aria-label': 'Leaderboard', onclick: () => goBoards && goBoards() }, icon('trophy', 18, '#ffcf5a'));
+  let feedTop = '';
   const stage = h('div', { class: 'stage' }, h('div', { class: 'arena' }), h('div', { class: 'aura' }), embers(), art,
-    h('div', { class: 'hp' }, hpGhost, hpFill, hpText, hpPct));
+    feed, boardBtn, adBoost, h('div', { class: 'hp' }, hpGhost, hpFill, hpText, hpPct));
   const sparks = createSparks(stage);
   let lastPct = null;
   const leftNum = h('b'); const leftSub = h('small');
   let adBusy = false;
-  const adPlus = h('button', { class: 'ad-plus', hidden: true, onclick: onAdPlus }, 'Watch ad: +1');
   const attackBtn = h('button', { class: 'attack', onclick: onAttack }, icon('swords', 30, '#ffe7a0'), h('span', null, 'ATTACK'));
   const abilityBtn = h('button', { class: 'ability', onclick: onAbility });
-  const feed = h('div', { class: 'feed-rows' });
   const tileEls = new Map();
   const tilesEl = h('div', { class: 'tiles' }, TILES.map((key) => {
     const rk = h('small', { class: 'rk' });
@@ -81,19 +86,19 @@ export function createHome(api, refresh, goProfile, goBoards) {
     tileEls.set(key, { el, rk, buy });
     return el;
   }));
+  const tagsEl = h('div', { class: 'boss-tags' }, matchEl, rewardEl, claimBtn);
   const el = h('section', { class: 'home' },
     h('div', { class: 'boss-head' }, h('div', { class: 'titles' }, labelEl, nameEl), h('div', { class: 'timer' }, h('small', null, 'Time Left'), timerEl)),
-    h('div', { class: 'boss-tags' }, typeEl, matchEl, rewardEl, claimBtn),
+    tagsEl,
     stage,
     h('div', { class: 'actions' },
-      h('div', { class: 'left' }, h('small', null, 'Attacks Left'), h('div', { class: 'left-num' }, icon('swords', 18), leftNum), leftSub, adPlus),
+      h('div', { class: 'left' }, h('small', null, 'Attacks Left'), h('div', { class: 'left-num' }, icon('swords', 18), leftNum), leftSub),
       attackBtn,
       abilityBtn),
+    adMore,
     guide,
-    h('div', { class: 'panel feed' }, h('div', { class: 'panel-head' }, h('b', null, 'Recent Attacks'),
-      h('button', { class: 'link', onclick: () => goBoards && goBoards() }, icon('trophy', 14), 'Leaderboard')), feed),
-    h('div', { class: 'panel upgrades' }, h('div', { class: 'panel-head' }, h('b', null, 'Coin Upgrades'), h('small', null, 'Permanent')),
-      tilesEl, statsEl));
+    h('div', { class: 'panel upgrades' }, h('div', { class: 'panel-head' }, h('b', null, 'Upgrades'), h('small', null, 'Permanent, paid in coins')),
+      tilesEl));
 
   // Boss rig, outside in: .rig takes hits and specials, .bob drifts, the legs stay planted while the
   // upper body breathes and leans on its own clock. Three unrelated periods keep it from looking looped.
@@ -215,10 +220,9 @@ export function createHome(api, refresh, goProfile, goBoards) {
     s = state;
     done = 0; // fresh server count already includes every finished attack
     const b = s.boss, p = s.player;
-    nameEl.textContent = b.name;
+    nameEl.textContent = b.type ? `${b.name} \u00b7 ${b.type}` : b.name;
     labelEl.textContent = b.label;
     stage.dataset.type = String(b.type || '').toLowerCase();
-    typeEl.textContent = b.type;
     rewardEl.hidden = !b.perk;
     if (b.perk) rewardEl.textContent = `Kill: +1% ${PERK_LABEL[b.perk]} forever`;
     const hp = BigInt(b.hp), max = BigInt(b.maxHp);
@@ -238,9 +242,15 @@ export function createHome(api, refresh, goProfile, goBoards) {
       leftSub.textContent = p.boostLeft > 0 ? `2x Damage: ${p.boostLeft} hit${p.boostLeft === 1 ? '' : 's'}`
         : p.bonusAttacks > 0 ? `${p.attacksMax} daily + ${p.bonusAttacks} bonus` : `of ${p.attacksMax} today`;
       leftSub.classList.toggle('boost-tag', p.boostLeft > 0);
-      adPlus.hidden = !(adsSupported() && p.attacksLeft <= 0 && p.ads && p.ads.attack && p.ads.attack.left > 0);
-      leftSub.hidden = !adPlus.hidden;
-      adPlus.disabled = adBusy;
+      const live = adsSupported() && !!p.ads;
+      adMore.hidden = !(live && p.attacksLeft <= 0 && p.ads.attack.left > 0);
+      moreSub.textContent = live ? `${p.ads.attack.left} left today` : '';
+      const canBoost = live && p.ads.damage.left > 0;
+      adBoost.hidden = !(canBoost || p.boostLeft > 0);
+      adBoost.classList.toggle('ready', p.boostLeft > 0);
+      adBoost.replaceChildren(h('b', null, '2x'), h('span', null, p.boostLeft > 0 ? `Ready x${p.boostLeft}` : 'Watch ad'));
+      adBoost.disabled = adBusy || !canBoost;
+      adMore.disabled = adBusy;
       attackBtn.disabled = p.attacksLeft <= 0;
       const pr = p.pendingRewards;
       claimBtn.hidden = !(pr && pr.count > 0);
@@ -248,12 +258,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
       const c = p.cls ? CLASSES[p.cls] : null;
       matchEl.hidden = !(c && c.prefers === b.type);
       matchEl.textContent = c ? `${c.name} vs ${b.type}` : '';
-      const stat = (ic, label, v) => h('div', { class: 'stat' }, icon(ic, 18), h('span', null, h('small', null, label), h('b', null, v)));
-      statsEl.replaceChildren(
-        stat('clover', 'Crit Chance', pct(p.critChance)),
-        stat('burst', 'Crit Damage', pct(p.critMult)),
-        stat('coin', 'Coin Bonus', `+${pct(p.coinBonus)}`),
-        stat('gem', 'Gem Chance', pct(p.gemChance)));
+      tagsEl.hidden = matchEl.hidden && rewardEl.hidden && claimBtn.hidden;
       paintAbility(p);
       const coins = BigInt(p.coins);
       for (const key of TILES) {
@@ -272,16 +277,17 @@ export function createHome(api, refresh, goProfile, goBoards) {
     tick();
   }
 
-  async function onAdPlus() {
+  const AD_OK = { attack: '+1 attack added.', damage: 'Your next attack does 2x damage.' };
+  async function watchAd(kind) {
     if (adBusy) return;
-    adBusy = true; adPlus.disabled = true; adPlus.textContent = 'Loading...';
+    adBusy = true; adMore.disabled = true; adBoost.disabled = true;
     try {
       if (!(await playRewarded())) { toast('Ad closed early, no reward.'); return; }
-      const r = await api.adReward('attack');
+      const r = await api.adReward(kind);
       if (!r || !r.ok) { toast(r && r.error === 'ad_limit' ? 'Daily ad limit reached. Back tomorrow.' : 'Reward failed. Try again.'); return; }
-      toast('+1 attack added.'); sfx.buy();
+      toast(AD_OK[kind]); sfx.buy();
     } catch { toast('No ad available right now. Try again in a minute.'); }
-    finally { adBusy = false; adPlus.textContent = 'Watch ad: +1'; await refresh(); }
+    finally { adBusy = false; await refresh(); }
   }
 
   function paintAbility(p) {
@@ -320,35 +326,54 @@ export function createHome(api, refresh, goProfile, goBoards) {
     await refresh();
   }
 
-  // First-run demo, driven by player state, so it survives reloads with no extra storage.
+  // First-run tips. Each tip shows one time only: the first session it applies, until its step is done or it is tapped.
+  // Shown tips are remembered on the device, so they never come back on later visits.
+  const TIPS_KEY = 'wb-tips';
+  const tipsSeen = new Set((() => { try { return JSON.parse(localStorage.getItem(TIPS_KEY)) || []; } catch { return []; } })());
+  const tipsLive = new Set();
+  const tipOk = (k) => tipsLive.has(k) || !tipsSeen.has(k);
+  function tipShown(k) {
+    tipsLive.add(k);
+    if (tipsSeen.has(k)) return;
+    tipsSeen.add(k);
+    try { localStorage.setItem(TIPS_KEY, JSON.stringify([...tipsSeen])); } catch { /* private mode: tips may repeat */ }
+  }
+  let tipKey = null;
+  guide.addEventListener('click', (e) => {
+    if (e.target.closest('button') || !tipKey) return;
+    tipsLive.delete(tipKey); guide.hidden = true;
+  });
   function renderGuide() {
     const p = s.player;
-    let msg = null, act = null;
+    let msg = null, act = null, key = null;
     if (p) {
-      if (p.totalAttacks === 0) msg = 'Tap ATTACK. Your first hit is free.';
-      else if (p.damageRank === 0 && BigInt(p.coins) >= 1n) msg = 'You earned a coin. Tap Base Damage to buy rank 1 for 1 coin.';
-      else if (p.damageRank >= 1 && p.totalAttacks < 2) msg = 'Stronger now. Attack again.';
-      else if (!p.nameSet) { msg = 'Pick your player name.'; act = h('button', { class: 'btn', onclick: goProfile }, 'Set name'); }
-      else if (!p.cls) {
-        msg = 'Choose your class. Each one excels against one boss type.';
+      if (p.totalAttacks === 0 && tipOk('attack')) { key = 'attack'; msg = 'Tap ATTACK to hit the boss.'; }
+      else if (p.damageRank === 0 && BigInt(p.coins) >= 1n && tipOk('coins')) { key = 'coins'; msg = 'You earn coins equal to the damage you deal. Spend them on Upgrades, starting with Damage.'; }
+      else if (p.damageRank >= 1 && p.totalAttacks < 2 && tipOk('again')) { key = 'again'; msg = 'Stronger now. Attack again.'; }
+      else if (!p.nameSet && p.totalAttacks > 0 && tipOk('name')) { key = 'name'; msg = 'Pick your player name.'; act = h('button', { class: 'btn', onclick: goProfile }, 'Set name'); }
+      else if (!p.cls && p.totalAttacks > 0 && tipOk('class')) {
+        key = 'class'; msg = 'Choose your class. Each one excels against one boss type.';
         act = h('button', { class: 'btn gold', onclick: () => openClassPicker(api, s, refresh, true) }, 'Choose');
         if (!pickerShown) { pickerShown = true; openClassPicker(api, s, refresh, true); }
       }
     }
+    tipKey = key;
+    if (key) tipShown(key);
     guide.hidden = !msg;
     if (msg) guide.replaceChildren(...[h('span', null, msg), act].filter(Boolean));
     tileEls.get('base_damage').el.classList.toggle('pulse', !!(p && p.damageRank === 0 && BigInt(p.coins) >= 1n));
     attackBtn.classList.toggle('pulse', !!(p && p.totalAttacks === 0));
   }
 
+  // Name color = that player's share of THIS boss. Tap a line for their stat card.
   function renderFeed() {
-    if (!s.feed.length) { feed.replaceChildren(h('div', { class: 'empty' }, 'No hits yet. Be the first.')); return; }
-    const nowMs = Date.now() + s.skew;
-    // Name color = that player's share of THIS boss (white -> blood red -> gold). Tap a row for their stat card.
-    feed.replaceChildren(...s.feed.slice(0, 8).map((f) =>
-      h('div', { class: `row${f.kill ? ' kill' : ''}${f.crit ? ' crit' : ''}`, onclick: () => openCard(api, f.pid) },
-        h('span', { class: 'who' }, h('i', { class: 'av', style: `--c:${CLASS_COLOR[f.cls] || '#5b6488'}` }, f.cls ? classGlyph(f.cls, 12) : icon('hood', 12)), nameTag(f.name, f.badge, f.share)),
-        h('span', null, f.crit ? h('i', { class: 'critmark' }, 'CRIT') : null, h('em', null, formatBig(f.damage)), h('small', null, ago(f.at, nowMs))))));
+    const rows = s.feed.slice(0, 10).reverse();
+    const top = rows.length ? `${rows[rows.length - 1].pid}|${rows[rows.length - 1].at}` : '';
+    const fresh = top !== feedTop && feedTop !== '';
+    feedTop = top;
+    feed.replaceChildren(...rows.map((f, i) =>
+      h('div', { class: `hit${f.kill ? ' kill' : ''}${f.crit ? ' crit' : ''}${fresh && i === rows.length - 1 ? ' new' : ''}`, onclick: () => openCard(api, f.pid) },
+        nameTag(f.name, null, f.share), h('em', null, `${f.crit ? 'CRIT ' : ''}${formatBig(f.damage)}${f.kill ? ' KILL' : ''}`))));
   }
 
   function tick() {
