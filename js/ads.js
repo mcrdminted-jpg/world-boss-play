@@ -62,9 +62,18 @@ export async function playRewarded() {
     subs.push(a.addListener('onRewardedVideoAdDismissed', () => resolve()));
     subs.push(a.addListener('onRewardedVideoAdFailedToShow', () => resolve()));
   });
+  // Google's real reason for a failed load arrives as an event, not in the rejection ("Loading failed"), so catch it.
+  let why = '';
+  subs.push(a.addListener('onRewardedVideoAdFailedToLoad', (info) => { why = (info && (info.message || info.code)) || ''; }));
   try {
-    try { await a.prepareRewardVideoAd({ adId: unit(), isTesting: TESTING }); }
-    catch (e) { throw new Error(`Ad failed to load: ${(e && (e.message || e.code)) || e}`); }
+    // One automatic retry: the first request right after the ad SDK starts, or on a shaky connection, often fails.
+    let loaded = false;
+    for (let tryNo = 0; tryNo < 2 && !loaded; tryNo++) {
+      if (tryNo) await new Promise((r) => setTimeout(r, 1500));
+      try { await a.prepareRewardVideoAd({ adId: unit(), isTesting: TESTING }); loaded = true; }
+      catch (e) { if (!why) why = (e && (e.message || e.code)) || String(e); }
+    }
+    if (!loaded) throw new Error(why ? `Google says: ${why}` : 'Ad failed to load.');
     const item = await a.showRewardVideoAd();
     if (item && (item.amount !== undefined || item.type)) rewarded = true;
     await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]);
