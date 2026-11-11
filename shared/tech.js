@@ -1,6 +1,6 @@
 // Gem tech tree, v2 (2026-11-10): an 81-node spiderweb, 5 ranks each. Every v1 node id is kept, so nothing a player owns is lost.
 // One source of truth: the UI draws it, the engine applies it, and scripts/gen-tech-sql.mjs seeds the SQL table.
-// A node unlocks only when every prerequisite node is complete (all ranks). Viewing never unlocks anything.
+// A node unlocks once every prerequisite node has at least 1 rank (changed 2026-11-10, was all ranks). Viewing never unlocks anything.
 export const TIER_COST = [0, 1, 2, 4, 8, 16]; // gems per rank, by tier
 export const EFFECTS = {
   damage:  { label: '% damage', per: 2 },
@@ -89,6 +89,6 @@ export function techSum(tech, effect) {
   return s;
 }
 export function techUnlocked(tech, id) {
-  return NODE[id].req.every((r) => (tech[r] || 0) >= NODE[r].ranks);
+  return NODE[id].req.every((r) => (tech[r] || 0) >= 1);
 }
 // Max possible: crit 25 ranks x 2 = 50, attacks 25 ranks = +25, gem 25 ranks x 2 = 50 (spec v1.2).

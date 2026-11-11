@@ -7,6 +7,7 @@ import { createSparks, flyIcons } from './fx.js';
 import { sfx } from './sfx.js';
 import { adsSupported, playRewarded } from './ads.js';
 import { TIERS, SLOT_NAME } from '../shared/gear.js';
+import { DAILY, dailyText } from '../shared/daily.js';
 
 const CLASS_SPARK = { warrior: ['#ffe6a0', '#ffb347', '#fff'], barbarian: ['#ff7a59', '#ffb347', '#ff3b2f'], rogue: ['#d1a8ff', '#9a5cff', '#fff'], archer: ['#a8ffb8', '#4fdc72', '#fff'], mage: ['#9fd8ff', '#4fa8ff', '#fff'] };
 
@@ -47,7 +48,7 @@ function resolveArt(srcs, cb) {
   t.src = first;
 }
 
-export function createHome(api, refresh, goProfile, goBoards) {
+export function createHome(api, refresh, goProfile, goBoards, goGear) {
   let s = null;
   let busy = false;
   let artKey = '';
@@ -58,7 +59,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
   const rewardEl = h('span', { class: 'chip gold' });
   const matchEl = h('span', { class: 'chip match', hidden: true });
   const guide = h('div', { class: 'guide', hidden: true });
-  const claimBtn = h('button', { class: 'claim', hidden: true, onclick: onClaim });
+  const claimBtn = h('button', { class: 'claim-big', hidden: true, onclick: onClaim });
   const art = h('div', { class: 'art' });
   const hpFill = h('b'); const hpGhost = h('i', { class: 'ghost' }); const hpText = h('span'); const hpPct = h('em');
   // Ads on Home: "More attacks?" under the ATTACK row once today's attacks are used, and 2x Damage on the arena under the trophy.
@@ -67,10 +68,11 @@ export function createHome(api, refresh, goProfile, goBoards) {
   const adBoost = h('button', { class: 'ad-boost', hidden: true, onclick: () => watchAd('damage') });
   // Live hit stream on the arena, like a stream chat: last 10 hits, newest at the bottom.
   const feed = h('div', { class: 'hit-stream' });
+  const dailyBtn = h('button', { class: 'daily-btn', hidden: true, 'aria-label': 'Daily rewards', onclick: () => openDaily() }, icon('chest', 18, '#ffcf5a'), h('span', null, 'Daily'));
   const boardBtn = h('button', { class: 'board-btn', 'aria-label': 'Leaderboard', onclick: () => goBoards && goBoards() }, icon('trophy', 18, '#ffcf5a'));
   let feedTop = null;
   const stage = h('div', { class: 'stage' }, h('div', { class: 'arena' }), h('div', { class: 'aura' }), embers(), art,
-    feed, boardBtn, adBoost, h('div', { class: 'hp' }, hpGhost, hpFill, hpText, hpPct));
+    feed, boardBtn, adBoost, dailyBtn, h('div', { class: 'hp' }, hpGhost, hpFill, hpText, hpPct));
   const sparks = createSparks(stage);
   let lastPct = null;
   const leftNum = h('b'); const leftSub = h('small');
@@ -87,11 +89,12 @@ export function createHome(api, refresh, goProfile, goBoards) {
     tileEls.set(key, { el, rk, buy });
     return el;
   }));
-  const tagsEl = h('div', { class: 'boss-tags' }, matchEl, rewardEl, claimBtn);
+  const tagsEl = h('div', { class: 'boss-tags' }, matchEl, rewardEl);
   const el = h('section', { class: 'home' },
     h('div', { class: 'boss-head' }, h('div', { class: 'titles' }, labelEl, nameEl, h('div', { class: 'timeline' }, icon('clock', 12), timerEl))),
     tagsEl,
     stage,
+    claimBtn,
     h('div', { class: 'actions' },
       h('div', { class: 'left' }, h('small', null, 'Attacks Left'), h('div', { class: 'left-num' }, icon('swords', 18), leftNum), leftSub),
       attackBtn,
@@ -251,15 +254,26 @@ export function createHome(api, refresh, goProfile, goBoards) {
       adBoost.classList.toggle('ready', p.boostLeft > 0);
       adBoost.replaceChildren(h('b', null, '2x'), h('span', null, p.boostLeft > 0 ? `Ready x${p.boostLeft}` : 'Watch ad'));
       adBoost.disabled = adBusy || !canBoost;
+      lastDaily = p.daily || null;
+      dailyBtn.hidden = !lastDaily;
+      dailyBtn.classList.toggle('ready', !!(lastDaily && lastDaily.ready));
+      dailyBtn.classList.toggle('low', !adBoost.hidden);
+      // Show the calendar by itself once a day, but not during a brand-new player's first minute.
+      if (lastDaily && lastDaily.ready && p.totalAttacks > 0 && !document.querySelector('#sheet-root .sheet')) {
+        const k = `${lastDaily.claimed}`; let seen = null;
+        try { seen = localStorage.getItem('wb-daily-shown'); } catch { /* ignore */ }
+        if (seen !== k) { try { localStorage.setItem('wb-daily-shown', k); } catch { /* ignore */ } openDaily(); }
+      }
       adMore.disabled = adBusy;
       attackBtn.disabled = p.attacksLeft <= 0;
       const pr = p.pendingRewards;
       claimBtn.hidden = !(pr && pr.count > 0);
-      if (!claimBtn.hidden) claimBtn.textContent = `Claim ${formatBig(pr.coins)} coins${pr.gems && pr.gems !== '0' ? ` + ${pr.gems} gems` : ''}`;
+      if (!claimBtn.hidden) claimBtn.replaceChildren(h('b', null, pr.count > 1 ? `${pr.count} bosses defeated!` : 'Boss defeated!'),
+        h('span', null, `Claim ${formatBig(pr.coins)} coins${pr.gems && pr.gems !== '0' ? ` + ${pr.gems} gems` : ''} + gear`));
       const c = p.cls ? CLASSES[p.cls] : null;
       matchEl.hidden = !(c && c.prefers === b.type);
       matchEl.textContent = c ? `${c.name} vs ${b.type}` : '';
-      tagsEl.hidden = matchEl.hidden && rewardEl.hidden && claimBtn.hidden;
+      tagsEl.hidden = matchEl.hidden && rewardEl.hidden;
       paintAbility(p);
       const coins = BigInt(p.coins);
       for (const key of TILES) {
@@ -404,7 +418,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
   function onAttack() {
     if (!s?.player) return;
     const free = s.player.attacksLeft - queued - (busy ? 1 : 0) - done;
-    if (free <= 0) { toast('No attacks left today. They reset at midnight Pacific.'); return; }
+    if (free <= 0) { toast(busy ? 'Still sending your last attack. One moment.' : 'No attacks left today. They reset at midnight Pacific.'); return; }
     queued += 1;
     leftNum.textContent = `${Math.max(0, free - 1)}`;
     attackBtn.animate([{ transform: 'scale(1)' }, { transform: 'scale(.94)' }, { transform: 'scale(1)' }], { duration: 140 });
@@ -459,15 +473,60 @@ export function createHome(api, refresh, goProfile, goBoards) {
     return false;
   }
 
+  // Daily rewards: a 30-day calendar. One claim per day; missing a day never resets it.
+  let lastDaily = null, dailyBusy = false;
+  const DAILY_ICON = { attacks: ['swords', '#ffd36b'], boost: ['burst', '#ffb347'], scrap: ['chest', '#cfd6ff'], gems: ['gem', '#c48bff'], item: ['armor', '#5aa9ff'] };
+  function openDaily() {
+    const d = lastDaily; if (!d) return;
+    const done = d.ready ? d.day - 1 : (d.day === 1 ? DAILY.length : d.day - 1); // days already collected this cycle
+    const today = d.ready ? d.day : done;
+    let close = () => {};
+    const btn = h('button', { class: 'btn', disabled: !d.ready, onclick: async () => {
+      if (dailyBusy) return; dailyBusy = true; btn.disabled = true;
+      try {
+        const r = await api.dailyClaim();
+        close();
+        if (r.ok) {
+          sfx.coin();
+          toast(`Day ${r.day}: ${r.kind === 'item' && r.item ? (r.item.scrapped ? 'bag full, gear turned into scrap' : `${TIERS[r.item.tier].name} ${SLOT_NAME[r.item.slot]} (see Gear)`) : dailyText(r)}`, 3500);
+        } else toast(r.error === 'already_claimed' ? 'Already claimed today.' : 'Could not claim. Try again.');
+      } catch (e) { toast('Connection problem. Try again.'); }
+      dailyBusy = false;
+      await refresh();
+    } }, d.ready ? `Claim day ${d.day}: ${dailyText(DAILY[d.day - 1])}` : 'Come back tomorrow');
+    close = openSheet(h('h2', null, 'Daily Rewards'),
+      h('p', { class: 'muted', style: 'font-size:13px;margin:0 0 8px' }, `Day ${today} of ${DAILY.length}. One reward each day you play. Missing a day never resets it.`),
+      h('div', { class: 'daily-grid' }, DAILY.map((r) => h('div', { class: `dday${r.day <= done ? ' got' : ''}${d.ready && r.day === d.day ? ' now' : ''}${r.kind === 'gems' || r.kind === 'item' ? ' big' : ''}` },
+        h('small', null, r.day <= done ? 'Done' : `Day ${r.day}`), icon(DAILY_ICON[r.kind][0], 20, DAILY_ICON[r.kind][1]),
+        h('b', null, r.kind === 'item' ? 'Rare' : r.kind === 'boost' ? `${r.n} x 2x` : r.kind === 'attacks' ? `+${r.n}` : `${r.n}`)))),
+      h('div', { class: 'daily-key' }, [['attacks', 'Attacks'], ['scrap', 'Scrap'], ['boost', '2x damage'], ['gems', 'Gems'], ['item', 'Gear']].map(([k, n]) => h('span', null, icon(DAILY_ICON[k][0], 13, DAILY_ICON[k][1]), n))),
+      h('div', { style: 'display:flex;gap:8px;margin-top:12px' }, btn, h('button', { class: 'btn ghost', onclick: () => close() }, 'Close')));
+  }
+
+  let claiming = false;
   async function onClaim() {
-    const r = await api.claim();
-    if (r.ok && r.claimed) {
-      const got = (r.drops || []).filter((d) => d && !d.scrapped);
-      const gearMsg = got.length ? `. Gear: ${got.map((d) => `${TIERS[d.tier].name} ${SLOT_NAME[d.slot]}`).join(', ')} (see Profile)` : '';
-      toast(`Claimed ${formatBig(r.coins)} coins${r.gems && r.gems !== '0' ? ` and ${r.gems} gems` : ''}${gearMsg}`, got.length ? 5000 : 2200);
-      flyIcons(claimBtn, document.getElementById('coin-pill'), 'coin', 8);
-      if (r.gems && r.gems !== '0') flyIcons(claimBtn, document.getElementById('gem-pill'), 'gem', 4);
-    }
+    if (claiming) return;
+    claiming = true; claimBtn.disabled = true;
+    try {
+      const r = await api.claim();
+      if (r.ok && r.claimed) {
+        const drops = (r.drops || []).filter(Boolean);
+        const got = drops.filter((d) => !d.scrapped), scrapped = drops.length - got.length;
+        flyIcons(claimBtn, document.getElementById('coin-pill'), 'coin', 8);
+        if (r.gems && r.gems !== '0') flyIcons(claimBtn, document.getElementById('gem-pill'), 'gem', 4);
+        sfx.coin();
+        let close = () => {};
+        close = openSheet(h('h2', null, 'Rewards claimed'),
+          h('div', { class: 'kv' }, h('span', null, 'Coins'), h('span', null, `+${formatBig(r.coins)}`)),
+          r.gems && r.gems !== '0' ? h('div', { class: 'kv' }, h('span', null, 'Gems'), h('span', null, `+${r.gems}`)) : null,
+          got.map((d) => h('div', { class: 'kv' }, h('span', null, 'Gear'), h('span', { class: `gt${d.tier}` }, `${TIERS[d.tier].name} ${SLOT_NAME[d.slot]}`))),
+          scrapped ? h('div', { class: 'kv' }, h('span', null, 'Bag full'), h('span', null, `${scrapped} item${scrapped === 1 ? '' : 's'} turned into scrap`)) : null,
+          h('div', { style: 'display:flex;gap:8px;margin-top:12px' },
+            got.length && goGear ? h('button', { class: 'btn', onclick: () => { close(); goGear(); } }, 'Open Gear') : null,
+            h('button', { class: 'btn ghost', onclick: () => close() }, 'Keep fighting')));
+      } else if (!r.ok) toast('Could not claim. Try again.');
+    } catch (e) { toast('Connection problem. Try again.'); }
+    claiming = false; claimBtn.disabled = false;
     await refresh();
   }
 

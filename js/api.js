@@ -40,6 +40,7 @@ export async function createApi() {
     useAbility: () => raw.useAbility(),
     buyTech: (n) => raw.buyTech(n),
     adReward: (k) => raw.adReward(k),
+    dailyClaim: () => raw.dailyClaim(),
     gear: () => raw.gear(),
     gearEquip: (id, on = true) => raw.gearEquip(id, on),
     gearMerge: (keep, feed) => raw.gearMerge(keep, feed),

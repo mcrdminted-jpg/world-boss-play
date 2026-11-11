@@ -12,7 +12,8 @@ import { nameError } from './namefilter.js';
 import { earnedBadges, displayBadge } from './badges.js';
 import { NODE, techSum, techUnlocked, techCost } from './tech.js';
 
-import { gearBonus, dropItem, gearState, equipItem, unequipItem, mergeItems, recycleItems, buyCrate, equippedOf } from './gear.js';
+import { gearBonus, dropItem, gearState, equipItem, unequipItem, mergeItems, recycleItems, buyCrate, equippedOf, rollItem, grantItem } from './gear.js';
+import { DAILY, DAILY_LEN } from './daily.js';
 export const CONFIG = {
   attemptMs: 7 * 86400000,
   dailyAttacks: 5,
@@ -394,6 +395,27 @@ export function useAbility(w, id, now) {
   return { ok: true, cls: p.cls, ability: c.ability };
 }
 
+// Daily reward: one claim per calendar day, day N of a 30-day cycle = your Nth claim. No streak to lose.
+export function dailyInfo(p, now) {
+  const count = (p && p.dailyCount) || 0;
+  return { day: (count % DAILY_LEN) + 1, claimed: count, ready: !p || p.dailyDay !== dayKey(now) };
+}
+export function claimDaily(w, id, now, rng = Math.random) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  const info = dailyInfo(p, now);
+  if (!info.ready) return { ok: false, error: 'already_claimed', daily: info };
+  const r = DAILY[info.day - 1];
+  let item = null;
+  if (r.kind === 'attacks') p.bonusAttacks += r.n;
+  else if (r.kind === 'boost') p.boostLeft = (p.boostLeft || 0) + r.n;
+  else if (r.kind === 'scrap') { gearState(p); p.scrap = (p.scrap || 0) + r.n; }
+  else if (r.kind === 'gems') { p.gems += BigInt(r.n); p.gemsEarned += BigInt(r.n); }
+  else item = grantItem(p, rollItem(rng, r.n));
+  p.dailyDay = dayKey(now); p.dailyCount = (p.dailyCount || 0) + 1;
+  return { ok: true, day: r.day, kind: r.kind, n: r.n, item, daily: dailyInfo(p, now) };
+}
+
 export function adsInfo(p, now) {
   const fresh = !p || p.adDay !== dayKey(now);
   const used = (k) => (fresh ? 0 : p.ads[k]);
@@ -538,7 +560,7 @@ export function publicState(w, id, now) {
       cls: p.cls, classFreeUntil: classInfo(p, now).freeUntil, classNextFreeAt: classInfo(p, now).nextFreeAt,
       classSwitchFree: classInfo(p, now).freeNow,
       abilityReady: !!p.cls && p.abilityDay !== dayKey(now), abilityKind: p.abilityKind, abilityLeft: p.abilityLeft,
-      ads: adsInfo(p, now), boostLeft: p.boostLeft || 0,
+      ads: adsInfo(p, now), boostLeft: p.boostLeft || 0, daily: dailyInfo(p, now),
       scrap: p.scrap || 0, gearCount: (p.items || []).length, gearBonus: gearBonus(p),
     } : null,
     feed: w.events.slice(-w.config.feedSize).reverse().map((e) => {

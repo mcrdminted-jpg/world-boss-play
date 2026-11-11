@@ -150,3 +150,10 @@ export function createGearPanel(api, refresh) {
     },
   };
 }
+
+// Gear has its own tab (2026-11-10): the same panel, on its own screen.
+export function createGearScreen(api, refresh) {
+  const panel = createGearPanel(api, refresh);
+  const el = h('div', { class: 'scroll' }, panel.el);
+  return { el, render: (s) => panel.sync(s) };
+}

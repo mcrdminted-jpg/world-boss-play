@@ -1,4 +1,4 @@
-import { h, toast } from './dom.js';
+import { h, toast, openSheet } from './dom.js';
 import { formatBig, groupDigits, PERK_KEYS, PERK_LABEL } from '../shared/combat.js';
 import { nameError, NAME_ERROR_TEXT, NAME_MAX } from '../shared/namefilter.js';
 import { MILESTONES, BADGE_LABEL } from '../shared/badges.js';
@@ -43,15 +43,39 @@ const COUNTRIES = [['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kin
 const STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 const ERR = { ...NAME_ERROR_TEXT, bad_zip: 'ZIP must be 5 digits.' };
 
-import { createGearPanel } from './gear.js';
 export function createProfile(api, refresh, goBoards) {
-  const gearPanel = createGearPanel(api, refresh);
   const el = h('div', { class: 'scroll' });
 
   async function save(patch) {
     const r = await api.setProfile(patch);
     if (!r.ok) toast(ERR[r.error] || 'Could not save.');
     await refresh();
+  }
+
+  // Tap an achievement: what it is, how far along, what it gives.
+  function openAch(a, p) {
+    const slayer = a.key === 'slayer';
+    const m = slayer ? 1 : Number(a.key.slice(1));
+    const done = slayer ? (p.slayer || []).length : (p.perkCount || 0);
+    const showing = p.badge === a.key;
+    let close = () => {};
+    close = openSheet(
+      h('div', { class: 'ach-sheet' },
+        h('span', { class: `ach-medal${a.have ? ' have' : ''}` }, icon(a.have ? a.ic : 'lock', 30, a.have ? (slayer ? '#ff6a3d' : '#ffd36b') : '#6c77a8')),
+        h('div', null, h('h2', null, a.title), h('small', null, a.have ? 'Earned' : 'Locked'))),
+      h('p', null, slayer ? 'Land the killing blow on any World Boss.' : `Help defeat ${m} World Bosses. A boss counts when you hit it at least once before it falls.`),
+      h('div', { class: 'phero-bar' }, h('i', { style: `width:${Math.min(100, (done / m) * 100)}%` })),
+      h('div', { class: 'kv' }, h('span', null, 'Progress'), h('span', null, slayer ? `${done} killing blow${done === 1 ? '' : 's'}` : `${Math.min(done, m)} of ${m}`)),
+      h('div', { class: 'kv' }, h('span', null, 'Reward'), h('span', null, 'Badge: ', badgeChip(a.key))),
+      h('p', { class: 'muted', style: 'font-size:13px' }, slayer
+        ? 'The badge shows next to your name on the hit stream and leaderboards. It is for show only and gives no stat bonus.'
+        : 'The badge shows next to your name on the hit stream and leaderboards. The bosses themselves are what make you stronger: each one you help defeat gives a permanent +1% perk.'),
+      h('div', { style: 'display:flex;gap:8px;margin-top:10px' },
+        a.have && !showing ? h('button', { class: 'btn', onclick: async () => {
+          close(); const r = await api.setBadge(a.key); toast(r.ok ? 'Badge shown next to your name.' : 'Badge not earned yet.'); await refresh();
+        } }, 'Show this badge') : null,
+        a.have && showing ? h('span', { class: 'muted', style: 'align-self:center;font-size:13px' }, 'Showing next to your name now.') : null,
+        h('button', { class: 'btn ghost', onclick: () => close() }, 'Close')));
   }
 
   function render(s) {
@@ -102,7 +126,7 @@ export function createProfile(api, refresh, goBoards) {
       h('div', { class: 'pnote' }, s.highestDefeated ? `Community: World Boss #${s.highestDefeated} is the highest defeated so far.` : 'Community: no World Boss defeated yet.'));
     const achList = achievements(p);
     const ach = h('div', { class: 'card' }, h('div', { class: 'card-row' }, h('h2', null, 'Achievements'), h('small', null, `${achList.filter((a) => a.have).length}/${achList.length}`)),
-      h('div', { class: 'achs' }, achList.map((a) => h('div', { class: `ach${a.have ? ' have' : ''}` },
+      h('div', { class: 'achs' }, achList.map((a) => h('button', { class: `ach${a.have ? ' have' : ''}`, onclick: () => openAch(a, p) },
         h('span', { class: 'ach-medal' }, icon(a.have ? a.ic : 'lock', 26, a.have ? (a.key === 'slayer' ? '#ff6a3d' : '#ffd36b') : '#6c77a8')),
         h('b', null, a.title), h('small', null, a.have ? a.sub : a.prog)))));
     const nowMs = Date.now() + (s.skew || 0);
@@ -119,9 +143,8 @@ export function createProfile(api, refresh, goBoards) {
             h('span', { class: `hstat ${x.status === 'defeated' ? 'ok' : 'bad'}` }, x.status === 'defeated' ? 'Defeated' : 'Retreated', h('small', null, x.endedAt ? ago(x.endedAt, nowMs) : '')));
         })
         : h('div', { class: 'muted', style: 'font-size:14px' }, 'No finished fights yet.'));
-    gearPanel.sync(s);
     el.replaceChildren(
-      hero, gearPanel.el, stats, ach, classCard, hist,
+      hero, stats, ach, classCard, hist,
       h('div', { class: 'card' }, h('h2', null, 'Settings'),
         slide('Sound effects', 'sound', (v) => { if (v) sfx.coin(); }),
         slide('Vibration', 'vibration'),

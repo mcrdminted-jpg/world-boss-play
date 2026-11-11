@@ -771,3 +771,37 @@ html, body { background: #060a18; }
 .gtile .gdots i { width: 4px; height: 4px; border-radius: 50%; }
 .gtile { padding-bottom: 6px; }
 .gdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+
+/* 2026-11-10: five tabs (Gear added), big claim button, achievement sheet */
+#nav { grid-template-columns: repeat(5, 1fr); }
+#nav button { font-size: 11px; }
+.home { grid-template-areas: "head" "tags" "stage" "claim" "actions" "more" "guide" "tiles";
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto auto; }
+@media (max-height: 760px) { .home { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto auto; } }
+.home > .claim-big { grid-area: claim; display: grid; gap: 1px; justify-items: center; padding: 10px 12px; border-radius: 14px; color: #fff;
+  border: 1px solid #ffd36b; background: linear-gradient(180deg, #2c8a55, #1a5c38); box-shadow: 0 0 18px #ffd36b55; animation: claimpulse 1.4s ease-in-out infinite; }
+.home > .claim-big[hidden] { display: none; }
+.claim-big b { font-size: 16px; font-weight: 900; color: #ffd36b; }
+.claim-big span { font-size: 13px; font-weight: 700; }
+.claim-big:disabled { opacity: .6; animation: none; }
+@keyframes claimpulse { 50% { box-shadow: 0 0 28px #ffd36baa; transform: scale(1.012); } }
+button.ach { color: inherit; font: inherit; cursor: pointer; }
+.ach-sheet { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.ach-sheet h2 { margin: 0; } .ach-sheet small { color: var(--muted); }
+.ach-sheet .ach-medal.have { border-color: #ffc45a; box-shadow: 0 0 12px #ffc45a77; }
+
+/* daily rewards */
+.stage .daily-btn { position: absolute; z-index: 6; left: 8px; top: 52px; display: grid; justify-items: center; gap: 1px; min-width: 38px; padding: 5px 7px;
+  border-radius: 12px; border: 1px solid #2c3a74; background: #0a0d22cc; backdrop-filter: blur(4px); color: #cfd6ff; }
+.stage .daily-btn.low { top: 100px; }
+.stage .daily-btn[hidden] { display: none; }
+.daily-btn span { font-size: 9.5px; font-weight: 700; }
+.daily-btn.ready { border-color: #ffcf5a; color: #ffcf5a; box-shadow: 0 0 12px #ffcf5a88; animation: claimpulse 1.4s ease-in-out infinite; }
+.daily-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.dday { display: grid; justify-items: center; gap: 1px; padding: 5px 1px; border-radius: 9px; background: #0d1330; border: 1px solid #2e3866; }
+.dday small { font-size: 9px; color: var(--muted); font-weight: 700; } .dday b { font-size: 11px; }
+.dday.big { border-color: #6a4fb0; background: #1a1340; }
+.dday.got { opacity: .45; } .dday.got small { color: #5fe07a; }
+.dday.now { border-color: #ffcf5a; box-shadow: 0 0 10px #ffcf5a88; background: #2a2208; }
+.daily-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.daily-key span { display: inline-flex; align-items: center; gap: 4px; }

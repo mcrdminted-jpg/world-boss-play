@@ -5,6 +5,7 @@ import { createBoards } from './boards.js';
 import { createProfile } from './profile.js';
 import { createTree } from './tree.js';
 import { createStore } from './store.js';
+import { createGearScreen } from './gear.js';
 import { formatBig, CLASSES } from '../shared/combat.js';
 import { classGlyph, CLASS_COLOR } from './classes.js';
 import { icon } from './icons.js';
@@ -17,7 +18,7 @@ const ICONS = {
   store: 'M4 7h16l-1 13H5L4 7zM8 7a4 4 0 018 0',
   profile: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0',
 };
-const TABS = [['home', 'Home'], ['tree', 'Tech Tree'], ['store', 'Store'], ['profile', 'Profile']]; // spec: four tabs; Leaderboard opens from Home and Profile
+const TABS = [['home', 'Home'], ['tree', 'Tech Tree'], ['gear', 'Gear'], ['store', 'Store'], ['profile', 'Profile']]; // spec: four tabs; Leaderboard opens from Home and Profile
 
 const coinPill = h('div', { class: 'pill', id: 'coin-pill' }, icon('coin', 18), h('span'));
 const gemPill = h('div', { class: 'pill gem', id: 'gem-pill' }, icon('gem', 18), h('span'));
@@ -31,7 +32,7 @@ function setPill(el, key, v) {
   shown[key] = Number.isSafeInteger(now) ? now : null;
 }
 const missingArt = new Set(); // art not delivered yet: stop re-requesting it every refresh
-let api, state = null, tab = 'home', home, boards, profile, tree, store;
+let api, state = null, tab = 'home', home, boards, profile, tree, store, gear;
 
 const soon = (title, text) => h('div', { class: 'soon' }, h('div', null, h('h2', null, title), h('p', null, text)));
 
@@ -43,6 +44,7 @@ async function refresh() {
     if (tab === 'profile') profile.render(state);
     if (tab === 'tree') tree.render(state);
     if (tab === 'store') store.render(state);
+    if (tab === 'gear') gear.render(state);
   } catch (e) {
     toast('Cannot reach the server.');
   }
@@ -64,7 +66,7 @@ function paintHeader() {
 }
 
 function paintNav() {
-  const NAV_ICON = { home: 'home', tree: 'tree', store: 'chest', profile: 'person' };
+  const NAV_ICON = { home: 'home', tree: 'tree', gear: 'armor', store: 'chest', profile: 'person' };
   $('#nav').replaceChildren(...TABS.map(([k, label]) =>
     h('button', { class: k === tab ? 'on' : '', onclick: () => go(k) }, icon(NAV_ICON[k], 24, k === tab ? null : '#8a95c4'), label)));
 }
@@ -78,6 +80,7 @@ function go(k) {
   else if (k === 'profile') { screen.replaceChildren(profile.el); if (state) profile.render(state); }
   else if (k === 'tree') { screen.replaceChildren(tree.el); if (state) tree.render(state); }
   else if (k === 'store') { screen.replaceChildren(store.el); if (state) store.render(state); }
+  else if (k === 'gear') { screen.replaceChildren(gear.el); if (state) gear.render(state); }
 }
 
 // Atlas Forever Studios splash: at least 1.6 s, and until the first game state has loaded.
@@ -90,11 +93,12 @@ function hideSplash(started) {
 async function boot() {
   const started = Date.now();
   api = await createApi();
-  home = createHome(api, refresh, () => go('profile'), () => go('boards'));
+  home = createHome(api, refresh, () => go('profile'), () => go('boards'), () => go('gear'));
   boards = createBoards(api, () => go('profile'));
   profile = createProfile(api, refresh, () => go('boards'));
   tree = createTree(api, refresh);
   store = createStore(api, refresh, () => go('tree'));
+  gear = createGearScreen(api, refresh);
   paintNav();
   go('home');
   await refresh();

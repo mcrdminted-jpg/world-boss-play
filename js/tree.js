@@ -122,12 +122,12 @@ export function createTree(api, refresh) {
   function openNode(n) {
     const p = s.player, tech = p.tech || {}, rank = tech[n.id] || 0, eff = EFFECTS[n.effect];
     const open = techUnlocked(tech, n.id), cost = BigInt(TIER_COST[n.tier]), max = rank >= n.ranks;
-    const needs = n.req.filter((r) => (tech[r] || 0) < NODE[r].ranks);
+    const needs = n.req.filter((r) => (tech[r] || 0) < 1);
     const rows = Array.from({ length: n.ranks }, (_, i) => h('div', { class: `trank${i < rank ? ' done' : i === rank ? ' next' : ''}` },
       h('i', null, i + 1), `+${(i + 1) * eff.per}${eff.label.startsWith('%') ? '' : ' '}${eff.label}${n.effect === 'attacks' && i > 0 ? 's' : ''}`));
     let why = null;
     if (n.cls && !p.cls) why = 'Pick a class first (Profile).';
-    else if (!open) why = `Needs: ${needs.map((r) => `${NODE[r].name} ${(tech[r] || 0)}/${NODE[r].ranks}`).join(', ')}`;
+    else if (!open) why = `Needs: ${needs.map((r) => `1 rank of ${NODE[r].name}`).join(', ')}`;
     else if (!max && BigInt(p.gems) < cost) why = `Needs ${cost} gem${cost === 1n ? '' : 's'}. You have ${formatBig(p.gems)}.`;
     const close = openSheet(
       h('div', { class: 'tsheet-head', style: `--c:${BRANCH[n.branch].color}` },
