@@ -5,14 +5,16 @@ import { randInt } from './combat.js';
 
 export const SLOTS = ['weapon', 'helm', 'chest', 'gloves', 'boots', 'ring'];
 export const SLOT_NAME = { weapon: 'Weapon', helm: 'Helm', chest: 'Chest', gloves: 'Gloves', boots: 'Boots', ring: 'Ring' };
-// odds are in hundredths of a percent; min/max are hundredths of a point per line
+// odds are in hundredths of a percent; min/max are hundredths of a point per line.
+// lines..maxLines: an item rolls its base line count or, half the time, one more (Uncommon 1-2, Rare 2-3, Epic 3-4).
+// The item's total stays the same either way: with the extra line, each line is proportionally smaller.
 export const TIERS = [null,
-  { name: 'Common', color: '#aab3c8', odds: 5000, lines: 1, min: 1, max: 100, scrap: 2, crate: 10 },
-  { name: 'Uncommon', color: '#5fe07a', odds: 2800, lines: 1, min: 100, max: 300, scrap: 3, crate: 15 },
-  { name: 'Rare', color: '#5aa9ff', odds: 1400, lines: 2, min: 200, max: 600, scrap: 4, crate: 20 },
-  { name: 'Epic', color: '#c48bff', odds: 500, lines: 3, min: 600, max: 1500, scrap: 6, crate: 30 },
-  { name: 'Legendary', color: '#ff9d3c', odds: 200, lines: 4, min: 2000, max: 4400, scrap: 8, crate: 40 },
-  { name: 'Mythic', color: '#ff4d5e', odds: 100, lines: 5, min: 6000, max: 14000, scrap: 12, crate: 0 },
+  { name: 'Common', color: '#aab3c8', odds: 5000, lines: 1, maxLines: 1, min: 1, max: 100, scrap: 2, crate: 10 },
+  { name: 'Uncommon', color: '#5fe07a', odds: 2800, lines: 1, maxLines: 2, min: 100, max: 300, scrap: 3, crate: 15 },
+  { name: 'Rare', color: '#5aa9ff', odds: 1400, lines: 2, maxLines: 3, min: 200, max: 600, scrap: 4, crate: 20 },
+  { name: 'Epic', color: '#c48bff', odds: 500, lines: 3, maxLines: 4, min: 600, max: 1500, scrap: 6, crate: 30 },
+  { name: 'Legendary', color: '#ff9d3c', odds: 200, lines: 4, maxLines: 4, min: 2000, max: 4400, scrap: 8, crate: 40 },
+  { name: 'Mythic', color: '#ff4d5e', odds: 100, lines: 5, maxLines: 5, min: 6000, max: 14000, scrap: 12, crate: 0 },
 ];
 export const BONUS_KEYS = ['gold', 'critdmg', 'dmg', 'boss', 'crit', 'gem'];
 export const BONUS_NAME = { gold: 'Gold', critdmg: 'Crit Damage', dmg: 'Damage', boss: 'Boss Damage', crit: 'Crit Chance', gem: 'Gem Chance' };
@@ -27,7 +29,7 @@ export const SETS = {
 };
 export const SET_KEYS = Object.keys(SETS);
 export const CLASS_KEYS = ['warrior', 'barbarian', 'rogue', 'archer', 'mage'];
-export const INV_CAP = 80, MERGE_MAX_TIER = 5, PITY_AT = 10, SET_CHANCE = 30, CRATE_UP = 5;
+export const INV_CAP = 80, MERGE_MAX_TIER = 5, PITY_AT = 10, SET_CHANCE = 0, CRATE_UP = 5; // SET_CHANCE 0: sets are switched off for now (Andy 2026-11-10), basic gear only
 
 // Tier roll. luck multiplies Rare-and-above odds (1, 1.25 or 1.5 by damage share); lieutenants halve Epic-and-above.
 // Mythic never passes 1.5%. Whatever is left over lands on Common.
@@ -44,9 +46,10 @@ export function rollTier(rng, luck = 1, lieutenant = false, pity = 0) {
 
 export function rollItem(rng, tier) {
   const T = TIERS[tier], stats = {};
-  for (let i = 0; i < T.lines; i++) {
+  const n = T.lines + (T.maxLines > T.lines && randInt(100, rng) < 50 ? 1 : 0);
+  for (let i = 0; i < n; i++) {
     const k = BONUS_KEYS[randInt(BONUS_KEYS.length, rng)];
-    stats[k] = (stats[k] || 0) + T.min + randInt(T.max - T.min + 1, rng);
+    stats[k] = (stats[k] || 0) + Math.max(1, Math.round(((T.min + randInt(T.max - T.min + 1, rng)) * T.lines) / n));
   }
   return {
     slot: SLOTS[randInt(SLOTS.length, rng)], tier, stats,
