@@ -14,6 +14,7 @@ export function nameTag(name, badge, share) {
     h('span', { class: 'tagname', style: share == null ? '' : `color:${shareColor(share)}` }, name));
 }
 
+import { gearRow } from './gear.js';
 export async function openCard(api, pid) {
   if (pid == null) return;
   let c;
@@ -32,5 +33,6 @@ export async function openCard(api, pid) {
     kv('Killing blows', c.slayer.length ? c.slayer.map((n) => `#${n}`).join(', ') : 'None'),
     kv('Permanent perks', PERK_KEYS.filter((k) => c.perks[k] > 0).map((k) => `+${c.perks[k]}% ${PERK_LABEL[k]}`).join(', ') || 'None yet'),
     kv('Playing since', since),
+    h('div', { class: 'ghead' }, h('b', null, 'Gear')), gearRow(c.gear),
     h('div', { style: 'margin-top:12px;display:grid' }, h('button', { class: 'btn', onclick: () => close() }, 'Close')));
 }

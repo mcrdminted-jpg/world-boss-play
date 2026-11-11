@@ -12,6 +12,7 @@ import { nameError } from './namefilter.js';
 import { earnedBadges, displayBadge } from './badges.js';
 import { NODE, techSum, techUnlocked, techCost } from './tech.js';
 
+import { gearBonus, dropItem, gearState, equipItem, unequipItem, mergeItems, recycleItems, buyCrate, equippedOf } from './gear.js';
 export const CONFIG = {
   attemptMs: 7 * 86400000,
   dailyAttacks: 5,
@@ -24,7 +25,7 @@ export const CONFIG = {
 };
 
 // Rewarded ads (Store spots). Mirrors wb_ad_reward in supabase/migrations/0007_ad_rewards.sql.
-export const AD_REWARDS = { attack: { max: 5 }, damage: { max: 10 }, gems: { max: 5, each: 1 } };
+export const AD_REWARDS = { attack: { max: 10 }, damage: { max: 10 }, gems: { max: 5, each: 1 } };
 
 const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: CONFIG.tz, year: 'numeric', month: '2-digit', day: '2-digit' });
 export const dayKey = (ms) => dayFmt.format(new Date(ms));
@@ -124,9 +125,12 @@ function winActive(w, killer, now) {
     }
   }
   const coins = rewardCoins(a.kind, a.mainNumber);
-  for (const [pid, c] of a.contributions) {
-    if (c.damage >= 1n) w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, gems: a.kind === 'main' ? 2n : 1n, claimed: false });
-  }
+  // Gear luck by damage share: top 10% of contributors x1.5 on Rare-and-above, top half x1.25, everyone else x1.
+  const ranked = [...a.contributions].filter(([, c]) => c.damage >= 1n).sort((x, y) => (x[1].damage === y[1].damage ? 0 : x[1].damage > y[1].damage ? -1 : 1));
+  ranked.forEach(([pid], i) => {
+    const luck = i * 10 < ranked.length ? 1.5 : i * 2 < ranked.length ? 1.25 : 1;
+    w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, gems: a.kind === 'main' ? 2n : 1n, claimed: false, luck, lieutenant: a.kind !== 'main' });
+  });
   if (w.depth > 0) {
     // Climb one rung. The rung above (or the numbered boss itself) is re-sized to at most what this
     // community just proved it can kill, scaled by kill speed. This is how a shrunken player base recovers.
@@ -177,14 +181,17 @@ export function statsOf(w, p, attempt) {
   const t = p.tech || {};
   const type = bossType(attempt.depth === 0 ? attempt.mainNumber : attempt.mainNumber - 1);
   const typeBonus = p.cls && CLASSES[p.cls].prefers === type ? techSum(t, 'type') : 0;
+  // Gear adds on top, and can carry fractions of a percent (damage, crit chance, gem chance and gold keep 2 decimals).
+  const g = gearBonus(p);
+  const r2 = (x) => Math.round(x * 100) / 100;
   return {
-    dmgPct: 100 + p.perks.damage + techSum(t, 'damage') + typeBonus + (attempt.kind === 'main' ? 2 * p.up.boss_damage + techSum(t, 'boss') : 0),
-    critChance: critChancePct(p.up.crit_chance, p.perks.crit + techSum(t, 'crit')),
-    critMult: critMultPct(p.up.crit_damage) + techSum(t, 'critdmg'),
-    gemChance: Math.min(100, p.perks.gem + techSum(t, 'gem')),
-    coinPct: p.perks.coins + 5 * p.up.coin_bonus + techSum(t, 'coins'),
-    maxAttacks: w.config.dailyAttacks + techSum(t, 'attacks'),
-    typeBonus,
+    dmgPct: r2(100 + p.perks.damage + techSum(t, 'damage') + typeBonus + g.dmg + (attempt.kind === 'main' ? 2 * p.up.boss_damage + techSum(t, 'boss') + g.boss : 0)),
+    critChance: r2(Math.min(100, critChancePct(p.up.crit_chance, p.perks.crit + techSum(t, 'crit')) + g.crit)),
+    critMult: critMultPct(p.up.crit_damage) + techSum(t, 'critdmg') + Math.floor(g.critdmg),
+    gemChance: r2(Math.min(100, p.perks.gem + techSum(t, 'gem') + g.gem)),
+    coinPct: r2(p.perks.coins + 5 * p.up.coin_bonus + techSum(t, 'coins') + g.gold),
+    maxAttacks: w.config.dailyAttacks + techSum(t, 'attacks') + g.attacks,
+    typeBonus, mythic: g.mythic,
   };
 }
 
@@ -220,19 +227,26 @@ export function attack(w, id, now, rng, opts = {}) {
   const dmgPct = st.dmgPct;
   const chance = st.critChance;
   const mult = st.critMult;
-  const crit = forceCrit || randInt(100, rng) < chance;
-  let rolled = rollStrike(p.damageRank, dmgPct, crit ? mult : 100, abilityPct * boostPct, rng);
-  // Double Strike: a free follow-up hit with its own crit roll, no ability bonus, no extra gem roll.
+  const natural = randInt(10000, rng) < Math.round(chance * 100); // would this hit have crit on its own?
+  const crit = forceCrit || natural;
+  // Rogue Shadow Strike: always a crit, worth at least double an average hit (same as Archer's 2x), capped at 3x a
+  // normal hit for crit-damage-only builds. Mirrors wb_attack in 0011_class_balance.sql.
+  if (forceCrit) abilityPct = Math.round((100 * Math.max(Math.min(mult, 300), 2 * (100 + (chance * (mult - 100)) / 100))) / mult);
+  // Mythic gear on its own class sharpens the ability: Warrior 6x becomes 7x, Mage 3.5x becomes 4x.
+  if (st.mythic && abilityPct === 600) abilityPct = 700; else if (st.mythic && abilityPct === 350) abilityPct = 400;
+  const strike = (critPct, abPct) => { const r = BigInt(p.damageRank); const d = stochRound(5n ** r * BigInt(Math.round(dmgPct * 100)) * BigInt(critPct) * BigInt(abPct), 4n ** r * 100000000n, rng); return d < 1n ? 1n : d; };
+  let rolled = strike(crit ? mult : 100, abilityPct * boostPct);
+  // Double Strike: a free follow-up hit. The class ability carries to it, so every class scales with it the same way.
   let double = false, crits = crit ? 1 : 0;
   if (randInt(100, rng) < 2 * p.up.double_strike) {
     double = true;
-    const crit2 = randInt(100, rng) < chance;
+    const crit2 = forceCrit || randInt(10000, rng) < Math.round(chance * 100);
     if (crit2) crits += 1;
-    rolled += rollStrike(p.damageRank, dmgPct, crit2 ? mult : 100, 100 * boostPct, rng);
+    rolled += strike(crit2 ? mult : 100, abilityPct * boostPct);
   }
   const dmg = rolled > a.hp ? a.hp : rolled;
   // Gems drop only on a critical hit, at the player's gem chance (gem perk now, tech tree later).
-  const gem = crit && randInt(100, rng) < st.gemChance;
+  const gem = natural && randInt(10000, rng) < Math.round(st.gemChance * 100); // natural crits only: a forced crit is not a gem roll
   if (gem) { p.gems += 1n; p.gemsEarned += 1n; }
   p.crits += crits;
   a.hp -= dmg;
@@ -243,7 +257,7 @@ export function attack(w, id, now, rng, opts = {}) {
   a.contributions.set(id, c);
   if (useBonus) p.bonusAttacks -= 1;
   else if (!opts.skipLimit) p.attacksUsed += 1;
-  const coins = rollCoins(dmg, st.coinPct, rng); // 1 coin per credited damage, plus perks, Coin Bonus and tech
+  const coins = stochRound(dmg * BigInt(Math.round((100 + st.coinPct) * 100)), 10000n, rng); // 1 coin per credited damage, plus perks, Coin Bonus and tech
   p.coins += coins;
   p.totalDamage += dmg;
   p.totalAttacks += 1;
@@ -296,7 +310,7 @@ export function playerCard(w, pid) {
     ok: true, pid: p.pid, name: p.name, badge: badgeOf(w, p), share: shareOf(w, w.active, p.id),
     totalDamage: p.totalDamage.toString(), totalAttacks: p.totalAttacks, highestHit: p.highestHit.toString(),
     bossesHelped: bossesHelped(w, p.id), slayer: [...w.slayers].filter(([, pid]) => pid === p.id).map(([n]) => n),
-    perks: { ...p.perks }, since: p.createdAt, worldRank: rank >= 0 ? rank + 1 : null,
+    perks: { ...p.perks }, since: p.createdAt, worldRank: rank >= 0 ? rank + 1 : null, gear: equippedOf(p),
   };
 }
 
@@ -373,8 +387,10 @@ export function useAbility(w, id, now) {
   if (p.abilityDay === k) return { ok: false, error: 'used_today' };
   p.abilityDay = k;
   const c = CLASSES[p.cls];
-  if (c.extra) p.bonusAttacks += c.extra;
-  else { p.abilityKind = p.cls; p.abilityLeft = c.charges; }
+  // Mythic gear on its own class: Barbarian +1 attack, Rogue and Archer +1 charge (Warrior and Mage get a bigger multiplier in attack()).
+  const myth = gearBonus(p).mythic ? 1 : 0;
+  if (c.extra) p.bonusAttacks += c.extra + myth;
+  else { p.abilityKind = p.cls; p.abilityLeft = c.charges + (myth && (p.cls === 'rogue' || p.cls === 'archer') ? 1 : 0); }
   return { ok: true, cls: p.cls, ability: c.ability };
 }
 
@@ -402,17 +418,30 @@ export function adReward(w, id, kind, now) {
   return { ok: true, kind, ads: adsInfo(p, now) };
 }
 
-export function claimRewards(w, id) {
+export function claimRewards(w, id, rng = Math.random) {
   const p = w.players.get(id);
   if (!p) return { ok: false, error: 'no_player' };
   let total = 0n, gems = 0n, n = 0;
+  const drops = []; // one piece of gear for every boss or lieutenant you helped kill
   for (const r of w.ledger) {
-    if (r.playerId === id && !r.claimed) { r.claimed = true; total += r.coins; gems += r.gems || 0n; n += 1; }
+    if (r.playerId === id && !r.claimed) {
+      r.claimed = true; total += r.coins; gems += r.gems || 0n; n += 1;
+      drops.push(dropItem(p, rng, r.luck || 1, !!r.lieutenant));
+    }
   }
   p.coins += total;
   p.gems += gems;
-  return { ok: true, claimed: n, coins: total.toString(), gems: gems.toString() };
+  return { ok: true, claimed: n, coins: total.toString(), gems: gems.toString(), drops };
 }
+
+// Gear actions (rules live in shared/gear.js).
+const withPlayer = (w, id, f) => { const p = w.players.get(id); return p ? f(p) : { ok: false, error: 'no_player' }; };
+export const gearInfo = (w, id) => withPlayer(w, id, (p) => gearState(p));
+export const gearEquip = (w, id, item) => withPlayer(w, id, (p) => equipItem(p, item));
+export const gearUnequip = (w, id, item) => withPlayer(w, id, (p) => unequipItem(p, item));
+export const gearMerge = (w, id, keep, feed) => withPlayer(w, id, (p) => mergeItems(p, keep, feed));
+export const gearRecycle = (w, id, items) => withPlayer(w, id, (p) => recycleItems(p, items));
+export const gearCrate = (w, id, tier, rng = Math.random) => withPlayer(w, id, (p) => buyCrate(p, tier, rng));
 
 const clean = (s, max) => String(s || '').trim().slice(0, max);
 
@@ -510,6 +539,7 @@ export function publicState(w, id, now) {
       classSwitchFree: classInfo(p, now).freeNow,
       abilityReady: !!p.cls && p.abilityDay !== dayKey(now), abilityKind: p.abilityKind, abilityLeft: p.abilityLeft,
       ads: adsInfo(p, now), boostLeft: p.boostLeft || 0,
+      scrap: p.scrap || 0, gearCount: (p.items || []).length, gearBonus: gearBonus(p),
     } : null,
     feed: w.events.slice(-w.config.feedSize).reverse().map((e) => {
       const fp = w.players.get(e.playerId);

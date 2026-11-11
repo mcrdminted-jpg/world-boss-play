@@ -40,6 +40,13 @@ export async function createApi() {
     useAbility: () => raw.useAbility(),
     buyTech: (n) => raw.buyTech(n),
     adReward: (k) => raw.adReward(k),
+    gear: () => raw.gear(),
+    gearEquip: (id, on = true) => raw.gearEquip(id, on),
+    gearMerge: (keep, feed) => raw.gearMerge(keep, feed),
+    gearRecycle: (ids) => raw.gearRecycle(ids),
+    gearCrate: (tier) => raw.gearCrate(tier),
+    iapVerify: (t) => (raw.iapVerify ? raw.iapVerify(t) : Promise.resolve({ ok: false, error: 'not_supported' })),
+    userId: () => (raw.userId ? raw.userId() : Promise.resolve(null)),
     deleteMe: () => raw.deleteMe(),
   };
 }

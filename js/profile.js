@@ -43,7 +43,9 @@ const COUNTRIES = [['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kin
 const STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 const ERR = { ...NAME_ERROR_TEXT, bad_zip: 'ZIP must be 5 digits.' };
 
+import { createGearPanel } from './gear.js';
 export function createProfile(api, refresh, goBoards) {
+  const gearPanel = createGearPanel(api, refresh);
   const el = h('div', { class: 'scroll' });
 
   async function save(patch) {
@@ -117,8 +119,9 @@ export function createProfile(api, refresh, goBoards) {
             h('span', { class: `hstat ${x.status === 'defeated' ? 'ok' : 'bad'}` }, x.status === 'defeated' ? 'Defeated' : 'Retreated', h('small', null, x.endedAt ? ago(x.endedAt, nowMs) : '')));
         })
         : h('div', { class: 'muted', style: 'font-size:14px' }, 'No finished fights yet.'));
+    gearPanel.sync(s);
     el.replaceChildren(
-      hero, stats, ach, classCard, hist,
+      hero, gearPanel.el, stats, ach, classCard, hist,
       h('div', { class: 'card' }, h('h2', null, 'Settings'),
         slide('Sound effects', 'sound', (v) => { if (v) sfx.coin(); }),
         slide('Vibration', 'vibration'),

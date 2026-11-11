@@ -8,7 +8,10 @@ const NATIVE = !!(C && C.isNativePlatform && C.isNativePlatform());
 const UNITS = { ios: 'ca-app-pub-5603864323887647/3239998622', android: null };
 // Google's public test units, used when the page is opened with ?testads=1 or in a debug build.
 const TEST_UNITS = { ios: 'ca-app-pub-3940256099942544/1712485313', android: 'ca-app-pub-3940256099942544/5224354917' };
-const TESTING = /[?&]testads=1/.test(location.search);
+// TEST MODE IS ON until the App Store release. Google test ads always fill and pay nothing, and they keep Andy's
+// AdMob account safe: watching your own live ads counts as invalid traffic. Flip LIVE_ADS to true before submitting.
+const LIVE_ADS = false;
+const TESTING = !LIVE_ADS || /[?&]testads=1/.test(location.search);
 
 const unit = () => (TESTING ? TEST_UNITS[PLATFORM] : UNITS[PLATFORM]) || null;
 // The game ships as plain files with no bundler, so @capacitor/core's registerPlugin is not on the page.
@@ -60,7 +63,8 @@ export async function playRewarded() {
     subs.push(a.addListener('onRewardedVideoAdFailedToShow', () => resolve()));
   });
   try {
-    await a.prepareRewardVideoAd({ adId: unit(), isTesting: TESTING });
+    try { await a.prepareRewardVideoAd({ adId: unit(), isTesting: TESTING }); }
+    catch (e) { throw new Error(`Ad failed to load: ${(e && (e.message || e.code)) || e}`); }
     const item = await a.showRewardVideoAd();
     if (item && (item.amount !== undefined || item.type)) rewarded = true;
     await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]);

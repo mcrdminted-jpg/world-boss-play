@@ -2,8 +2,9 @@
 // and tuned without a server. Add ?dev=1 for time-travel tools (window.wbDev).
 import {
   createWorld, ensurePlayer, attack, buyUpgrade, claimRewards, setProfile, leaderboard, publicState, resolveExpiry,
-  setBadge, playerCard, setClass, useAbility, buyTech, adReward,
+  setBadge, playerCard, setClass, useAbility, buyTech, adReward, gearInfo, gearEquip, gearUnequip, gearMerge, gearRecycle, gearCrate,
 } from '../shared/engine.js';
+import { dropItem } from '../shared/gear.js';
 import { serialize, deserialize } from '../shared/serialize.js';
 
 const KEY = 'wb-mock-v4'; // v4: tech tree, participation gems (old saves are dropped)
@@ -56,6 +57,8 @@ export function createMock() {
       coins(n) { w.players.get(ME).coins += BigInt(n); },
       rank(n) { w.players.get(ME).damageRank = n; },
       gems(n) { w.players.get(ME).gems += BigInt(n); },
+      gear(n = 10, luck = 1) { for (let i = 0; i < n; i++) dropItem(w.players.get(ME), Math.random, luck); },
+      scrap(n) { const p = w.players.get(ME); gearInfo(w, ME); p.scrap += n; },
       refill() { w.players.get(ME).attacksUsed = 0; },
       reset() { localStorage.removeItem(KEY); location.reload(); },
     };
@@ -68,6 +71,11 @@ export function createMock() {
     attack: () => delay(attack(w, ME, now(), Math.random)),
     buy: (k) => delay(buyUpgrade(w, ME, k)),
     claim: () => delay(claimRewards(w, ME)),
+    gear: () => delay(JSON.parse(JSON.stringify(gearInfo(w, ME)))),
+    gearEquip: (id, on) => delay(on === false ? gearUnequip(w, ME, id) : gearEquip(w, ME, id)),
+    gearMerge: (keep, feed) => delay(JSON.parse(JSON.stringify(gearMerge(w, ME, keep, feed)))),
+    gearRecycle: (ids) => delay(gearRecycle(w, ME, ids)),
+    gearCrate: (tier) => delay(JSON.parse(JSON.stringify(gearCrate(w, ME, tier)))),
     setProfile: (p) => delay(setProfile(w, ME, p)),
     setBadge: (b) => delay(setBadge(w, ME, b)),
     setClass: (c) => delay(setClass(w, ME, c, now())),

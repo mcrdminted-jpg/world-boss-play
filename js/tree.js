@@ -20,7 +20,7 @@ const px = (n) => (n.x - minX) * UX + 40 + NODE_W / 2, py = (n) => n.y * UY + 50
 
 export function createTree(api, refresh) {
   let s = null;
-  let view = { x: 0, y: 0, k: 1 }, placed = false;
+  let view = { x: 0, y: 0, k: 1 }, placed = false, visible = [NODES[0]];
   const world = h('div', { class: 'tree-world', style: `width:${W}px;height:${H}px` });
   const vp = h('div', { class: 'tree-vp' }, world);
   const gemsEl = h('b');
@@ -30,15 +30,24 @@ export function createTree(api, refresh) {
   const legend = h('div', { class: 'tree-legend' }, Object.values(BRANCH).map((b) => h('span', { style: `--c:${b.color}` }, h('i'), b.label)));
   const tools = h('div', { class: 'tree-tools' },
     h('button', { onclick: () => zoomBy(1.2) }, '+'), h('button', { onclick: () => zoomBy(1 / 1.2) }, '-'),
-    h('button', { onclick: () => { placed = false; place(); } }, 'Fit'));
+    h('button', { onclick: () => { placed = false; place(true); } }, 'Fit'));
   const hint = h('div', { class: 'tree-hint' }, 'Drag to explore. Tap a node to see it. Gems drop on crits and from every boss you help kill.');
   const el = h('section', { class: 'tree' }, head, legend, vp, tools, hint);
 
   function apply() { world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; }
-  function place() {
+  // Opens zoomed in on the core, where every build starts. The Fit button shows the whole web.
+  function place(fit = false) {
     if (placed || !vp.clientWidth) return;
-    const k = Math.min(1, (vp.clientWidth - 16) / W);
-    view = { k, x: (vp.clientWidth - W * k) / 2, y: 8 };
+    if (fit) {
+      // Fit frames only the nodes uncovered so far.
+      const xs = visible.map(px), ys = visible.map(py), pad = NODE_W + 30;
+      const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+      const k = Math.min(1, vp.clientWidth / (x1 - x0), vp.clientHeight / (y1 - y0));
+      view = { k, x: vp.clientWidth / 2 - ((x0 + x1) / 2) * k, y: vp.clientHeight / 2 - ((y0 + y1) / 2) * k };
+    } else {
+      const k = 0.72, core = NODES[0];
+      view = { k, x: vp.clientWidth / 2 - px(core) * k, y: vp.clientHeight / 2 - py(core) * k };
+    }
     placed = true; apply();
   }
   function zoomBy(f, cx = vp.clientWidth / 2, cy = vp.clientHeight / 2) {
@@ -75,7 +84,13 @@ export function createTree(api, refresh) {
     const tech = p.tech || {}, gems = BigInt(p.gems);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('class', 'tree-lines');
-    for (const n of NODES) for (const r of n.req) {
+    // Fog: a node stays hidden until you own it or have put at least one rank into a node that leads to it.
+    // A new player sees only the core; each purchase uncovers what comes next.
+    const seen = (n) => n.req.length === 0 || (tech[n.id] || 0) > 0 || n.req.some((r) => (tech[r] || 0) > 0);
+    const shown = NODES.filter(seen);
+    visible = shown;
+    for (const n of shown) for (const r of n.req) {
+      if (!seen(NODE[r])) continue;
       const a = NODE[r], lit = (tech[r] || 0) >= a.ranks;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       const x1 = px(a), y1 = py(a), x2 = px(n), y2 = py(n), my = (y1 + y2) / 2;
@@ -84,7 +99,7 @@ export function createTree(api, refresh) {
       path.style.setProperty('--c', BRANCH[n.branch].color);
       svg.append(path);
     }
-    const nodes = NODES.map((n) => {
+    const nodes = shown.map((n) => {
       const rank = tech[n.id] || 0, open = techUnlocked(tech, n.id) && (!n.cls || p.cls), max = rank >= n.ranks;
       const afford = open && !max && gems >= BigInt(TIER_COST[n.tier]);
       const cls = `tnode${max ? ' max' : ''}${open ? '' : ' locked'}${afford ? ' afford' : ''}`;
@@ -94,10 +109,14 @@ export function createTree(api, refresh) {
         h('span', { class: 'tn-box' }, glyph, h('small', null, `${rank}/${n.ranks}`)),
         h('span', { class: 'tn-name' }, n.name));
     });
-    const clsLabel = h('div', { class: 'tree-cls', style: `left:${px(NODE.cls1) - 60}px;top:${py(NODE.cls1) - NODE_W / 2 - 52}px` },
+    const hidden = NODES.length - shown.length;
+    hint.textContent = hidden > 0
+      ? `${hidden} more ${hidden === 1 ? 'node is' : 'nodes are'} hidden. Buy a node to uncover what it leads to.`
+      : 'The whole web is uncovered. Drag to explore.';
+    const clsLabel = !seen(NODE.cls1) ? null : h('div', { class: 'tree-cls', style: `left:${px(NODE.cls1) - 60}px;top:${py(NODE.cls1) - NODE_W / 2 - 52}px` },
       p.cls ? [classGlyph(p.cls, 16), `${CLASSES[p.cls].name} mastery vs ${CLASSES[p.cls].prefers}`] : 'Class mastery: pick a class');
-    world.replaceChildren(svg, clsLabel, ...nodes);
-    requestAnimationFrame(place);
+    world.replaceChildren(...[svg, clsLabel, ...nodes].filter(Boolean));
+    requestAnimationFrame(() => place());
   }
 
   function openNode(n) {

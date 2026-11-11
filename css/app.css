@@ -728,3 +728,38 @@ html, body { background: #060a18; }
 .boss-head h1, .boss-head .bossname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .boss-head .timeline { display: inline-flex; align-items: center; gap: 4px; margin-top: 1px; font-size: 11.5px; font-weight: 700; color: #e7c27a; font-variant-numeric: tabular-nums; }
 .boss-head .timeline b { font-weight: 700; }
+
+/* gem packs: three small packs in one row */
+.packs.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pack:disabled { opacity: .6; }
+
+/* rage vignette: cover the whole arena (the base ground-glow rule left it 30% tall, which drew a pulsing red line across the boss) */
+.stage.portrait.enraged::before { height: auto; inset: 0; }
+
+/* gear */
+.gslots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.gbag { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; max-height: 232px; overflow-y: auto; padding: 2px; }
+.gtile { position: relative; aspect-ratio: 1; display: grid; place-items: center; align-content: center; gap: 1px; padding: 2px; border-radius: 10px;
+  border: 2px solid var(--c, #2a3260); background: linear-gradient(180deg, color-mix(in srgb, var(--c, #2a3260) 22%, #10152f), #0c1026); color: #e6ebff; min-width: 0; }
+.gtile small { font-size: 8.5px; font-weight: 700; white-space: nowrap; overflow: hidden; max-width: 100%; color: #dfe5ff; }
+.gtile.empty { border-style: dashed; border-color: #2a3260; background: #0c1026; }
+.gtile.empty small { color: #5b6488; }
+.gtile.on { box-shadow: 0 0 0 2px #fff3 inset; }
+.gtile.t5, .gtile.t6 { box-shadow: 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
+.gtile.pick { outline: 3px solid #fff; outline-offset: -1px; }
+.gtile .gset, .gtile .gcls { position: absolute; top: 1px; font-style: normal; font-size: 8px; font-weight: 900; line-height: 1; padding: 2px 3px; border-radius: 4px; background: #5fe07a; color: #06250f; }
+.gtile .gset { left: 1px; } .gtile .gcls { right: 1px; background: #ff4d5e; color: #fff; }
+.gslots.small .gtile { pointer-events: none; }
+.gbonus { margin: 8px 0 2px; font-size: 12.5px; font-weight: 700; color: #ffd36b; line-height: 1.4; }
+.gsetline { display: flex; justify-content: space-between; font-size: 12px; margin-top: 2px; } .gsetline b { color: #5fe07a; } .gsetline span { color: #aab3c8; }
+.ghead { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; font-size: 13px; }
+.ghead span { display: inline-flex; align-items: center; gap: 4px; color: #aab3c8; font-size: 12px; }
+.gcrates { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.gcrate { display: grid; gap: 1px; padding: 7px 2px; border-radius: 10px; border: 1px solid var(--c); background: #0c1026; color: var(--c); font-size: 10.5px; min-width: 0; }
+.gcrate b { overflow: hidden; text-overflow: ellipsis; } .gcrate small { color: #aab3c8; font-size: 9.5px; } .gcrate:disabled { opacity: .4; }
+.gitem-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.gitem-head .gbig { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 12px; border: 2px solid var(--c); background: color-mix(in srgb, var(--c) 18%, #0c1026); }
+.gitem-head b { display: block; font-size: 18px; color: var(--c); } .gitem-head small { color: #aab3c8; }
+.glines .kv span:last-child { color: #ffd36b; font-weight: 800; }
+.gbtns { display: grid; gap: 8px; margin-top: 12px; }
+.btn.ghost { background: transparent; border: 1px solid #2a3260; color: #cfd6ff; }

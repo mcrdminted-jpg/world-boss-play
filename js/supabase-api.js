@@ -37,6 +37,24 @@ export function createSupabaseApi(url, key) {
     return r.json();
   }
 
+  // Gem purchase check: our iap-apple Edge Function asks Apple, then credits gems.
+  async function fn(name, body) {
+    await ensure();
+    const r = await fetch(`${url}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const j = await r.json().catch(() => null);
+    if (!j) throw new Error(`fn_${name}_${r.status}`);
+    return j;
+  }
+  async function userId() {
+    await ensure();
+    if (session.user?.id) return session.user.id;
+    return JSON.parse(atob(session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+  }
+
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
   return {
     mode: 'supabase',
@@ -52,6 +70,13 @@ export function createSupabaseApi(url, key) {
     useAbility: () => rpc('wb_use_ability', {}),
     buyTech: (n) => rpc('wb_buy_tech', { p_node: n }),
     adReward: (k) => rpc('wb_ad_reward', { p_kind: k }),
+    gear: () => rpc('wb_gear'),
+    gearEquip: (id, on) => rpc('wb_gear_equip', { p_item: id, p_on: on }),
+    gearMerge: (keep, feed) => rpc('wb_gear_merge', { p_keep: keep, p_feed: feed }),
+    gearRecycle: (ids) => rpc('wb_gear_recycle', { p_items: ids }),
+    gearCrate: (tier) => rpc('wb_gear_crate', { p_tier: tier }),
+    iapVerify: (transactionId) => fn('iap-apple', { transactionId }),
+    userId,
     deleteMe: async () => { const r = await rpc('wb_delete_me', {}); session = null; try { localStorage.removeItem(SKEY); } catch { /* ignore */ } return r; },
   };
 }

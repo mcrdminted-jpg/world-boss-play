@@ -4,9 +4,9 @@ import { h, toast } from './dom.js';
 import { formatBig } from '../shared/combat.js';
 import { icon } from './icons.js';
 import { adsSupported, playRewarded } from './ads.js';
+import { GEM_PACKS, iapSupported, loadPrices, buyGems, recoverPurchases } from './iap.js';
 import { sfx } from './sfx.js';
 
-const PACKS = [['100', '$0.99', ''], ['550', '$4.99', '10% bonus'], ['1,200', '$9.99', '20% bonus'], ['2,800', '$19.99', '30% bonus'], ['7,500', '$49.99', '50% bonus'], ['16,000', '$99.99', '60% bonus']];
 const AD_DONE = { attack: '+1 attack added.', damage: 'Your next attack does 2x damage.', gems: 'Gem added.' };
 const BOOSTS = [['Lucky Boost', 'clover', '+50% gem drops', '1 hour'], ['Coin Boost', 'coin', '+100% coins', '1 hour'], ['Crit Boost', 'burst', '+100% crit damage', '1 hour']];
 
@@ -18,20 +18,42 @@ export function createStore(api, refresh, goTree) {
   const LIVE_ADS = adsSupported();
   let tab = NATIVE ? 'earn' : 'gems';
   let watching = false;
+  const CAN_BUY = iapSupported();
+  let prices = {}, buying = false, last = null;
+  if (CAN_BUY) {
+    loadPrices().then((p) => { prices = p; if (last) render(last); });
+    recoverPurchases(api).then((n) => { if (n > 0) { toast(`${n} gem${n === 1 ? '' : 's'} from an earlier purchase added.`, 3000); refresh(); } });
+  }
+  const BUY_ERR = { pending: 'Purchase is waiting for approval. Gems arrive when it clears.', not_your_purchase: 'That purchase belongs to another account.',
+    refunded: 'That purchase was refunded.', apple_key_not_configured: 'Purchases are not switched on yet.', verify_failed: 'Paid, but the server could not be reached. Your gems will be added next time you open the Store.' };
+  async function buy(pack, s) {
+    if (buying) return;
+    buying = true; render(s);
+    try {
+      const r = await buyGems(api, pack.id);
+      if (r && r.ok) { toast(`+${r.gems} gem${r.gems === 1 ? '' : 's'}. Thank you!`, 2500); try { sfx.buy(); } catch { /* ignore */ } }
+      else if (r && r.error !== 'cancelled') toast(BUY_ERR[r.error] || `Purchase failed: ${r.error}`, 6000);
+    } finally { buying = false; await refresh(); }
+  }
+  function gemPanel(s) {
+    return h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Gem Packs'), h('small', null, 'Spend gems in the Tech Tree')),
+      h('div', { class: 'packs three' }, GEM_PACKS.map((pk, i) => h('button', { class: 'pack', disabled: CAN_BUY && buying, onclick: () => (CAN_BUY ? buy(pk, s) : toast('Gem packs are sold in the iPhone app.')) },
+        h('span', { class: 'pack-n' }, `${pk.gems} Gem${pk.gems === 1 ? '' : 's'}`),
+        h('span', { class: 'pack-ico', style: `--s:${0.8 + i * 0.14}` }, icon('gem', 34 + i * 5, '#c48bff')),
+        h('span', { class: 'pack-price' }, CAN_BUY && buying ? '...' : (prices[pk.id] || pk.price)),
+        CAN_BUY ? null : h('em', { class: 'soon-tag' }, 'App only')))),
+      CAN_BUY ? h('p', { class: 'fine' }, 'One-time purchases. Gems are added to this account right away.') : null);
+  }
   function render(s) {
     const p = s.player; if (!p) return;
+    last = s;
     const soon = () => toast('Opens with the App Store release.');
     const tabList = NATIVE ? null : [['gems', 'Gems'], ['boosts', 'Boosts'], ['earn', 'Earn free']];
     const tabs = !tabList ? null : h('div', { class: 'seg' }, tabList.map(([k, l]) =>
       h('button', { class: k === tab ? 'on' : '', onclick: () => { tab = k; render(s); } }, l)));
     let body;
     if (tab === 'gems') {
-      body = h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Gem Packs')),
-        h('div', { class: 'packs' }, PACKS.map(([n, price, bonus], i) => h('button', { class: 'pack', onclick: soon },
-          h('span', { class: 'pack-n' }, `${n} Gems`),
-          h('span', { class: 'pack-ico', style: `--s:${0.8 + i * 0.12}` }, icon(i < 2 ? 'gem' : 'chest', 34 + i * 4, i < 2 ? '#c48bff' : '#ffb347')),
-          bonus ? h('span', { class: 'pack-bonus' }, bonus) : null,
-          h('span', { class: 'pack-price' }, price), h('em', { class: 'soon-tag' }, 'Soon')))));
+      body = gemPanel(s);
     } else if (tab === 'boosts') {
       body = [
         NATIVE ? null : h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Special Items'), h('small', null, 'Temporary, gems')),
@@ -48,6 +70,7 @@ export function createStore(api, refresh, goTree) {
           h('div', { class: 'earn-row' }, icon('skull', 26), h('div', null, h('b', null, 'Help kill bosses'), h('small', null, '2 gems for every World Boss you hit before it falls, 1 for each Lieutenant.'))),
           h('div', { class: 'earn-row' }, icon('trophy', 26), h('div', null, h('b', null, 'Pending rewards'), h('small', null, `${pr.count || 0} waiting: ${formatBig(pr.coins || '0')} coins, ${formatBig(pr.gems || '0')} gems. Claim on Home.`))),
           h('button', { class: 'btn', onclick: goTree }, 'Spend gems in the Tech Tree')));
+      if (CAN_BUY) body = [gemPanel(s), body];
     }
     el.replaceChildren(...[h('div', { class: 'store-head' }, icon('chest', 30), h('h2', null, 'Store')), tabs, body].flat().filter(Boolean));
   }
@@ -73,7 +96,7 @@ export function createStore(api, refresh, goTree) {
       toast(AD_DONE[kind], 2500);
       try { sfx.buy(); } catch { /* ignore */ }
     } catch (e) {
-      toast('No ad available right now. Try again in a minute.');
+      toast(`No ad right now. ${(e && e.message) || e || ''}`.trim(), 6000);
     } finally {
       watching = false;
       await refresh();

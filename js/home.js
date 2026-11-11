@@ -6,6 +6,7 @@ import { icon } from './icons.js';
 import { createSparks, flyIcons } from './fx.js';
 import { sfx } from './sfx.js';
 import { adsSupported, playRewarded } from './ads.js';
+import { TIERS, SLOT_NAME } from '../shared/gear.js';
 
 const CLASS_SPARK = { warrior: ['#ffe6a0', '#ffb347', '#fff'], barbarian: ['#ff7a59', '#ffb347', '#ff3b2f'], rogue: ['#d1a8ff', '#9a5cff', '#fff'], archer: ['#a8ffb8', '#4fdc72', '#fff'], mage: ['#9fd8ff', '#4fa8ff', '#fff'] };
 
@@ -286,7 +287,7 @@ export function createHome(api, refresh, goProfile, goBoards) {
       const r = await api.adReward(kind);
       if (!r || !r.ok) { toast(r && r.error === 'ad_limit' ? 'Daily ad limit reached. Back tomorrow.' : 'Reward failed. Try again.'); return; }
       toast(AD_OK[kind]); sfx.buy();
-    } catch { toast('No ad available right now. Try again in a minute.'); }
+    } catch (e) { toast(`No ad right now. ${(e && e.message) || e || ''}`.trim(), 6000); }
     finally { adBusy = false; await refresh(); }
   }
 
@@ -461,7 +462,9 @@ export function createHome(api, refresh, goProfile, goBoards) {
   async function onClaim() {
     const r = await api.claim();
     if (r.ok && r.claimed) {
-      toast(`Claimed ${formatBig(r.coins)} coins${r.gems && r.gems !== '0' ? ` and ${r.gems} gems` : ''}`);
+      const got = (r.drops || []).filter((d) => d && !d.scrapped);
+      const gearMsg = got.length ? `. Gear: ${got.map((d) => `${TIERS[d.tier].name} ${SLOT_NAME[d.slot]}`).join(', ')} (see Profile)` : '';
+      toast(`Claimed ${formatBig(r.coins)} coins${r.gems && r.gems !== '0' ? ` and ${r.gems} gems` : ''}${gearMsg}`, got.length ? 5000 : 2200);
       flyIcons(claimBtn, document.getElementById('coin-pill'), 'coin', 8);
       if (r.gems && r.gems !== '0') flyIcons(claimBtn, document.getElementById('gem-pill'), 'gem', 4);
     }
