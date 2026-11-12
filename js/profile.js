@@ -82,14 +82,15 @@ export function createProfile(api, refresh, goBoards) {
     const p = s.player;
     if (!p) return;
     // Do not rebuild while the player is typing in a field.
-    if (el.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+    // Also hold while a picker (Country, State) is open: on iPhone the open list closes if its select is replaced.
+    if (el.contains(document.activeElement) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     // Checked here only to show a clear message; the server enforces the same rules.
     const nameIn = h('input', { value: p.name, maxlength: NAME_MAX, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
       onchange: (e) => { const v = e.target.value.trim(); const err = nameError(v); if (err) { toast(ERR[err]); e.target.value = p.name; return; } save({ name: v }); } });
-    const country = h('select', { onchange: (e) => save({ country: e.target.value, state: '' }) },
+    const country = h('select', { onchange: (e) => { e.target.blur(); save({ country: e.target.value, state: '' }); } },
       COUNTRIES.map(([c, n]) => h('option', { value: c, selected: c === p.country }, n)));
     const state = p.country === 'US'
-      ? h('label', { class: 'field' }, 'State', h('select', { onchange: (e) => save({ state: e.target.value }) },
+      ? h('label', { class: 'field' }, 'State', h('select', { onchange: (e) => { e.target.blur(); save({ state: e.target.value }); } },
         h('option', { value: '' }, 'Not set'), STATES.map((c) => h('option', { value: c, selected: c === p.state }, c))))
       : null;
     const zip = h('input', { value: p.zip, inputmode: 'numeric', maxlength: 5, placeholder: 'Optional', onchange: (e) => save({ zip: e.target.value.trim() }) });

@@ -344,7 +344,7 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
   // First-run tips. Each tip shows one time only: the first session it applies, until its step is done or it is tapped.
   // Shown tips are remembered on the device, so they never come back on later visits.
   const TIPS_KEY = 'wb-tips';
-  const tipsSeen = new Set((() => { try { return JSON.parse(localStorage.getItem(TIPS_KEY)) || []; } catch { return []; } })());
+  const tipsSeen = new Set((() => { try { const v = JSON.parse(localStorage.getItem(TIPS_KEY)); return Array.isArray(v) ? v : []; } catch { return []; } })());
   const tipsLive = new Set();
   const tipOk = (k) => tipsLive.has(k) || !tipsSeen.has(k);
   function tipShown(k) {
