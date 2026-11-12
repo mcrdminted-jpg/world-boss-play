@@ -9,8 +9,9 @@ const call = (method, options) => C.nativePromise('NativePurchases', method, opt
 // Must match App Store Connect and the wb_gem_products table.
 export const GEM_PACKS = [
   { id: 'com.atlasforeverstudios.worldboss.gems1', gems: 1, price: '$0.99' },
-  { id: 'com.atlasforeverstudios.worldboss.gems5', gems: 5, price: '$3.99' },
-  { id: 'com.atlasforeverstudios.worldboss.gems10', gems: 10, price: '$6.99' },
+  { id: 'com.atlasforeverstudios.worldboss.gems6', gems: 6, price: '$4.99' },
+  { id: 'com.atlasforeverstudios.worldboss.gems75', gems: 75, price: '$49.99', tag: '+50%' },
+  { id: 'com.atlasforeverstudios.worldboss.gems175', gems: 175, price: '$99.99', tag: 'Best value' },
 ];
 const IDS = GEM_PACKS.map((p) => p.id);
 

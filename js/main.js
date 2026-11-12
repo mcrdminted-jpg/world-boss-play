@@ -87,7 +87,11 @@ function go(k) {
 function hideSplash(started) {
   const el = document.getElementById('studio-splash');
   if (!el) return;
-  setTimeout(() => { el.classList.add('done'); setTimeout(() => el.remove(), 600); }, Math.max(0, 1600 - (Date.now() - started)));
+  // The bar creeps while the game loads, then fills to the end before the screen fades.
+  setTimeout(() => {
+    el.classList.add('full');
+    setTimeout(() => { el.classList.add('done'); setTimeout(() => el.remove(), 600); }, 320);
+  }, Math.max(0, 1600 - (Date.now() - started)));
 }
 
 async function boot() {

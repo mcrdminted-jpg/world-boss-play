@@ -1,13 +1,16 @@
 // Gem tech tree, v2 (2026-11-10): an 81-node spiderweb, 5 ranks each. Every v1 node id is kept, so nothing a player owns is lost.
 // One source of truth: the UI draws it, the engine applies it, and scripts/gen-tech-sql.mjs seeds the SQL table.
 // A node unlocks once every prerequisite node has at least 1 rank (changed 2026-11-10, was all ranks). Viewing never unlocks anything.
-export const TIER_COST = [0, 1, 2, 4, 8, 16]; // gems per rank, by tier
+// Gems for a rank climb by 1 every rank and carry on outward by unlock step (2026-11-11): the core costs 1,2,3,4,5;
+// every node the core unlocks costs 6..10; the nodes those unlock cost 11..15; and so on. depth = unlock steps from the core.
+export const rankCost = (depth, rank) => depth * 5 + rank; // rank = the rank being bought, 1..5
 export const EFFECTS = {
   damage:  { label: '% damage', per: 2 },
   boss:    { label: '% damage vs World Bosses', per: 2 },
   crit:    { label: '% crit chance', per: 2 },
   critdmg: { label: '% crit damage', per: 10 },
-  gem:     { label: '% gem chance on crit', per: 2 },
+  gem:     { label: '% gem chance on crit', per: 0.4 }, // 25 ranks = 10%, the most the tree can give (2026-11-11)
+  gem2:    { label: '% chance a gem drop is 2 gems', per: 1 },
   attacks: { label: 'daily attack', per: 1 },
   coins:   { label: '% coins', per: 5 },
   type:    { label: '% damage vs your class type', per: 2 },
@@ -15,7 +18,7 @@ export const EFFECTS = {
 // The tree is a spiderweb. The core sits in the middle; six builds run outward as spokes (Damage, Critical,
 // Attacks, Gems, Utility, Class), each a chain you climb one node at a time. Between every pair of neighbouring
 // spokes hang web nodes that need BOTH neighbours at that ring, and the outer rim closes the web.
-// Capped stats keep their caps: Critical I-V (+50%), Gem Chance I-V (+50%), Extra Attacks I-V and Onslaught I-V (+50), Type Damage I-V (+50%).
+// Capped stats keep their caps: Critical I-V (+50%), Gem Chance I-V (+10%), Extra Attacks I-V and Onslaught I-V (+50), Type Damage I-V (+50%).
 const SPOKE = { damage: 0, crit: 60, attacks: 120, gem: 180, coins: 240, class: 300 }; // degrees, clockwise from the top
 const RING = 1.55;                                                                       // map units between rings
 const at = (deg, ring) => {
@@ -51,7 +54,9 @@ for (let k = 1; k <= 5; k++) N(`atk${k}`, `Extra Attacks ${R[k]}`, 'attacks', k,
 for (let k = 1; k <= 5; k++) N(`ons${k}`, `Onslaught ${R[k]}`, 'attacks', Math.min(5, k + 1), 'attacks', SPOKE.attacks - SIDE, k + 0.5, [k === 1 ? 'atk1' : `ons${k - 1}`]);
 for (let k = 1; k <= 4; k++) N(`fury${k}`, `Fury ${R[k]}`, 'attacks', k + 1, 'damage', SPOKE.attacks + SIDE, k + 0.5, [k === 1 ? 'atk1' : `fury${k - 1}`]);
 
-// Gem build: gem drop chance on crits.
+// Gem build: gem drop chance on crits, and Double Gem (10 ranks, +1% each) on the strand beside it.
+N('dgem1', 'Double Gem I', 'gem', 3, 'gem2', SPOKE.gem + SIDE, 2.5, ['gem2']);
+N('dgem2', 'Double Gem II', 'gem', 4, 'gem2', SPOKE.gem + SIDE, 3.5, ['dgem1']);
 for (let k = 1; k <= 5; k++) N(`gem${k}`, `Gem Chance ${R[k]}`, 'gem', k, 'gem', SPOKE.gem, k, [k === 1 ? 'dmg1' : `gem${k - 1}`]);
 
 // Utility build: coins.
@@ -78,15 +83,17 @@ for (const [a, b, id, name, branch, effect] of WEB) {
   N(`${id}5`, `${name} Apex`, branch, 5, effect, mid, 6, [main(a, 5), main(b, 5)]); // outer rim
 }
 const MIN_Y = Math.min(...RAW.map((n) => n.y));
-export const NODES = RAW.map((n) => ({ ...n, y: Math.round((n.y - MIN_Y) * 100) / 100 }));
+const RAWBY = Object.fromEntries(RAW.map((n) => [n.id, n]));
+const depthOf = (id) => (RAWBY[id].req.length ? 1 + Math.max(...RAWBY[id].req.map(depthOf)) : 0);
+export const NODES = RAW.map((n) => ({ ...n, y: Math.round((n.y - MIN_Y) * 100) / 100, depth: depthOf(n.id) }));
 export const NODE = Object.fromEntries(NODES.map((n) => [n.id, n]));
-export const techCost = (id) => BigInt(TIER_COST[NODE[id].tier]);
+export const techCost = (id, rank) => BigInt(rankCost(NODE[id].depth, rank)); // rank = the rank being bought
 
 // Sum of one effect across the player's ranks (tech is { nodeId: rank }).
 export function techSum(tech, effect) {
   let s = 0;
   for (const n of NODES) if (n.effect === effect) s += (tech[n.id] || 0) * EFFECTS[effect].per;
-  return s;
+  return Math.round(s * 100) / 100;
 }
 export function techUnlocked(tech, id) {
   return NODE[id].req.every((r) => (tech[r] || 0) >= 1);

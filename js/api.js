@@ -46,6 +46,7 @@ export async function createApi() {
     gearMerge: (keep, feed) => raw.gearMerge(keep, feed),
     gearRecycle: (ids) => raw.gearRecycle(ids),
     gearCrate: (tier) => raw.gearCrate(tier),
+    gearReroll: (id, what = 'stats') => raw.gearReroll(id, what),
     iapVerify: (t) => (raw.iapVerify ? raw.iapVerify(t) : Promise.resolve({ ok: false, error: 'not_supported' })),
     userId: () => (raw.userId ? raw.userId() : Promise.resolve(null)),
     deleteMe: () => raw.deleteMe(),

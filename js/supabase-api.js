@@ -84,6 +84,7 @@ export function createSupabaseApi(url, key) {
     gearMerge: (keep, feed) => rpc('wb_gear_merge', { p_keep: keep, p_feed: feed }),
     gearRecycle: (ids) => rpc('wb_gear_recycle', { p_items: ids }),
     gearCrate: (tier) => rpc('wb_gear_crate', { p_tier: tier }),
+    gearReroll: (id, what) => rpc('wb_gear_reroll', { p_item: id, p_what: what }),
     iapVerify: (transactionId) => fn('iap-apple', { transactionId }),
     userId,
     deleteMe: async () => { const r = await rpc('wb_delete_me', {}); session = null; try { localStorage.removeItem(SKEY); } catch { /* ignore */ } return r; },

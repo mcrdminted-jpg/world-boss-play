@@ -450,7 +450,7 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
       if (r.gem) setTimeout(() => sfx.gem(), 300);
       float(`${r.crit ? 'CRIT ' : ''}-${formatBig(r.damage)}`, r.killed ? 'kill' : r.crit ? 'crit' : '');
       if (r.double) setTimeout(() => float('DOUBLE STRIKE', 'dbl'), 160);
-      if (r.gem) { setTimeout(() => float('+1 gem', 'gem'), 260); flyIcons(art, document.getElementById('gem-pill'), 'gem', 3); }
+      if (r.gem) { setTimeout(() => float(`+${r.gems || 1} gem${(r.gems || 1) > 1 ? 's' : ''}`, 'gem'), 260); flyIcons(art, document.getElementById('gem-pill'), 'gem', 3); }
       if (BigInt(r.coins || 0) > 0n) flyIcons(art, document.getElementById('coin-pill'), 'coin', Math.min(7, 2 + String(r.coins).length));
       vibrate(r.killed ? [30, 40, 60] : r.crit ? [18, 20, 18] : 12);
       if (r.killed) {

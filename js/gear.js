@@ -3,22 +3,22 @@
 import { h, toast, openSheet } from './dom.js';
 import { icon } from './icons.js';
 import { sfx } from './sfx.js';
-import { SLOTS, SLOT_NAME, TIERS, BONUS_KEYS, BONUS_NAME, SETS, WEIGHT } from '../shared/gear.js';
+import { SLOTS, SLOT_NAME, TIERS, BONUS_KEYS, BONUS_NAME, SETS, WEIGHT, gemPct, REROLL_COST } from '../shared/gear.js';
 
 const SLOT_ICON = { weapon: 'sword', helm: 'helm', chest: 'armor', gloves: 'gloves', boots: 'boots', ring: 'ring' };
 const CLASS_NAME = { warrior: 'Warrior', barbarian: 'Barbarian', rogue: 'Rogue', archer: 'Archer', mage: 'Mage' };
 const MYTHIC_TEXT = { warrior: 'Titan Strike 6x becomes 7x', barbarian: '+1 attack from the daily ability', rogue: '+1 Shadow Strike charge', archer: '+1 ability charge', mage: 'ability 3.5x becomes 4x' };
-const ERR = { need_three: 'Pick exactly 3 items to feed.', tier_mismatch: 'All four items must be the same tier.', equipped: 'Unequip it first.', max_tier: 'Legendary is the top merge. Mythic only drops.',
+const ERR = { need_three: 'Pick exactly 3 items to feed.', tier_mismatch: 'All four items must be the same tier.', equipped: 'Unequip it first.', max_tier: 'Mythic is the top tier.',
   not_enough_scrap: 'Not enough scrap.', bag_full: 'Your bag is full. Merge or recycle first.', no_item: 'That item is gone.' };
 
-export const fmtPct = (v) => { const a = Math.abs(v); const s = a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3); return s.replace(/\.?0+$/, ''); };
+export const fmtPct = (v) => { const a = Math.abs(v); const s = a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : a >= 0.1 ? v.toFixed(3) : v.toFixed(4); return s.replace(/\.?0+$/, ''); };
 // Tile labels must fit a 50px square: at most 4 digits, and a short word for the bonus type on its own line.
 const shortPct = (v) => (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v >= 0.1 ? v.toFixed(2) : v.toFixed(3)).replace(/\.?0+$/, '');
 // One dot per different bonus on the item, so a tile shows at a glance how many effects it has.
 const BONUS_COLOR = { gold: '#ffcf4a', critdmg: '#ff9d3c', dmg: '#ff6a4d', boss: '#ff4d8d', crit: '#5fe07a', gem: '#c48bff' };
 const BONUS_SHORT = { gold: 'Gold', critdmg: 'Crit Dmg', dmg: 'Damage', boss: 'Boss', crit: 'Crit %', gem: 'Gems' };
 export const itemName = (it) => `${TIERS[it.tier].name} ${SLOT_NAME[it.slot]}`;
-const linesOf = (it, weight) => BONUS_KEYS.filter((k) => it.stats[k]).map((k) => ({ k, pct: (it.stats[k] / 100) * (weight[k] ?? WEIGHT[k]) })).sort((a, b) => b.pct - a.pct);
+const linesOf = (it, weight) => BONUS_KEYS.filter((k) => it.stats[k]).map((k) => ({ k, pct: k === 'gem' && it.tier ? gemPct(it, weight) : (it.stats[k] / 100) * (weight[k] ?? WEIGHT[k]) })).sort((a, b) => b.pct - a.pct);
 const after = (fn) => setTimeout(fn, 260); // a closing sheet clears the sheet root 220ms later; open the next one after that
 const points = (it) => Object.values(it.stats).reduce((a, b) => a + b, 0);
 
@@ -39,7 +39,7 @@ export function gearRow(gear, weight = WEIGHT) {
 }
 
 export function createGearPanel(api, refresh) {
-  let g = null, sig = '', busy = false;
+  let g = null, sig = '', busy = false, gemsNow = 0, myCls = null;
   const el = h('div', { class: 'card gear' }, h('h2', null, 'Gear'), h('div', { class: 'muted', style: 'font-size:13px' }, 'Loading...'));
 
   async function load() { try { g = await api.gear(); } catch { g = null; } paint(); }
@@ -80,9 +80,9 @@ export function createGearPanel(api, refresh) {
       h('div', { class: 'gslots' }, SLOTS.map((sl) => itemTile(eq[sl], sl, () => (eq[sl] ? openItem(eq[sl]) : openSlot(sl)), w))),
       h('div', { class: 'gbonus' }, bl.length ? bl.join(' · ') : 'Nothing equipped yet. Every boss you help kill drops one item.'),
       ...setLines(),
-      h('div', { class: 'ghead' }, h('b', null, `Bag ${g.items.length}/${g.cap}`), h('span', null, icon('chest', 14, '#aab3c8'), `${g.scrap} scrap`)),
+      h('div', { class: 'ghead' }, h('b', null, `Bag ${bag.length}`, h('small', { style: 'font-weight:600;color:var(--muted)' }, ` · ${g.items.length}/${g.cap} items owned`)), h('span', null, icon('chest', 14, '#aab3c8'), `${g.scrap} scrap`)),
       bag.length ? h('div', { class: 'gbag' }, bag.map((it) => itemTile(it, it.slot, () => openItem(it), w)))
-        : h('div', { class: 'muted', style: 'font-size:13px' }, 'Your bag is empty.'),
+        : h('div', { class: 'muted', style: 'font-size:13px' }, g.items.length ? 'Nothing spare. Everything you own is equipped.' : 'Your bag is empty.'),
       h('div', { class: 'ghead' }, h('b', null, 'Crates'), h('span', null, 'A new random item of that tier')),
       h('div', { class: 'gcrates' }, [1, 2, 3, 4, 5].map((t) => h('button', { class: 'gcrate', style: `--c:${TIERS[t].color}`, disabled: g.scrap < TIERS[t].crate,
         onclick: () => act(() => api.gearCrate(t), (r) => `Crate: ${itemName(r.item)}`) }, h('b', null, TIERS[t].name), h('small', null, `${TIERS[t].crate} scrap`)))));
@@ -93,6 +93,18 @@ export function createGearPanel(api, refresh) {
     if (!list.length) { toast(`No ${SLOT_NAME[slot].toLowerCase()} in your bag yet.`); return; }
     const close = openSheet(h('h2', null, `Equip ${SLOT_NAME[slot]}`),
       h('div', { class: 'gbag' }, list.map((it) => itemTile(it, slot, () => { close(); after(() => openItem(it)); }, g.weight))));
+  }
+
+  const gemTag = (n) => h('span', { class: 'gemtag' }, icon('gem', 13, '#c48bff'), `${n}`);
+  async function reroll(it, what) {
+    try {
+      const r = await api.gearReroll(it.id, what);
+      if (!r.ok) { toast({ not_enough_gems: 'Not enough gems.', same_class: 'It is already gear for your class.', no_class: 'Pick a class first.' }[r.error] || 'Could not re-roll.'); return; }
+      toast(what === 'class' ? 'Now gear for your class.' : 'Stats re-rolled.');
+      await refresh(); await load();
+      const fresh = g.items.find((x) => x.id === it.id);
+      if (fresh) after(() => openItem(fresh));
+    } catch (e) { toast('Connection problem. Try again.'); }
   }
 
   function openItem(it) {
@@ -108,10 +120,14 @@ export function createGearPanel(api, refresh) {
       it.cls ? h('p', { class: 'fine' }, `On a ${CLASS_NAME[it.cls]}: ${MYTHIC_TEXT[it.cls]}.`) : null,
       h('div', { class: 'gbtns' },
         it.equipped ? btn('Unequip', '', () => act(() => api.gearEquip(it.id, false))) : btn('Equip', 'gold', () => act(() => api.gearEquip(it.id, true), `${itemName(it)} equipped.`)),
-        it.tier < 5 ? btn(`Merge (4 into 1 ${TIERS[it.tier + 1].name})`, '', async () => after(() => openMerge(it)), same.length < 3) : null,
+        it.tier < 6 ? btn(`Merge (4 into 1 ${TIERS[it.tier + 1].name})`, '', async () => after(() => openMerge(it)), same.length < 3) : null,
         it.equipped ? null : btn(`Recycle (+${T.scrap} scrap)`, 'ghost', () => act(() => api.gearRecycle([it.id]), `+${T.scrap} scrap`))),
-      it.tier < 5 && same.length < 3 ? h('p', { class: 'fine' }, `Merging needs 3 more unequipped ${T.name} items. You have ${same.length}.`) : null,
-      it.tier === 5 ? h('p', { class: 'fine' }, 'Legendary is the top merge. Mythic only drops.') : null);
+      it.tier < 6 && same.length < 3 ? h('p', { class: 'fine' }, `Merging needs 3 more unequipped ${T.name} items. You have ${same.length}.`) : null,
+      it.tier === 5 ? h('p', { class: 'fine' }, 'Four Legendaries merge into a Mythic with a random class.') : null,
+      h('div', { class: 'gbtns greroll' },
+        btn(['Re-roll stats ', gemTag(REROLL_COST[it.tier])], '', () => reroll(it, 'stats'), gemsNow < REROLL_COST[it.tier]),
+        it.tier === 6 && myCls && it.cls !== myCls ? btn([`Make it ${CLASS_NAME[myCls]} gear `, gemTag(REROLL_COST[6])], '', () => reroll(it, 'class'), gemsNow < REROLL_COST[6]) : null),
+      h('p', { class: 'fine' }, 'Re-roll: every bonus keeps its size and becomes a new random type.'));
   }
 
   // Pick 3 same-tier items to feed into the kept one. The result is the total of all four.
@@ -128,7 +144,7 @@ export function createGearPanel(api, refresh) {
       grid.replaceChildren(...pool.map((it) => { const t = itemTile(it, it.slot, () => { if (picked.has(it.id)) picked.delete(it.id); else if (picked.size < 3) picked.add(it.id); draw(); }, w); if (picked.has(it.id)) t.classList.add('pick'); return t; }));
       const total = { ...keep.stats };
       for (const it of pool) if (picked.has(it.id)) for (const [k, v] of Object.entries(it.stats)) total[k] = (total[k] || 0) + v;
-      preview.replaceChildren(...linesOf({ stats: total }, w).map((l) => h('div', { class: 'kv' }, h('span', null, BONUS_NAME[l.k]), h('span', null, `+${fmtPct(l.pct)}%`))));
+      preview.replaceChildren(...linesOf({ stats: total, tier: keep.tier + 1 }, w).map((l) => h('div', { class: 'kv' }, h('span', null, BONUS_NAME[l.k]), h('span', null, `+${fmtPct(l.pct)}%`))));
       go.textContent = picked.size === 3 ? `Merge into ${N.name} ${SLOT_NAME[keep.slot]}` : `Pick ${3 - picked.size} more`;
       go.disabled = picked.size !== 3;
     }
@@ -145,6 +161,7 @@ export function createGearPanel(api, refresh) {
     // Reloads only when the bag or scrap changed (the state poll calls this every few seconds).
     sync(s) {
       const p = s && s.player; if (!p) return;
+      gemsNow = Number(p.gems || 0); myCls = p.cls || null;
       const n = `${p.gearCount}|${p.scrap}|${p.cls}`;
       if (n !== sig) { sig = n; load(); }
     },

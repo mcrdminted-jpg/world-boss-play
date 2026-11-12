@@ -12,7 +12,7 @@ import { nameError } from './namefilter.js';
 import { earnedBadges, displayBadge } from './badges.js';
 import { NODE, techSum, techUnlocked, techCost } from './tech.js';
 
-import { gearBonus, dropItem, gearState, equipItem, unequipItem, mergeItems, recycleItems, buyCrate, equippedOf, rollItem, grantItem } from './gear.js';
+import { gearBonus, dropItem, gearState, equipItem, unequipItem, mergeItems, recycleItems, buyCrate, equippedOf, rollItem, grantItem, rerollItem } from './gear.js';
 import { DAILY, DAILY_LEN } from './daily.js';
 export const CONFIG = {
   attemptMs: 7 * 86400000,
@@ -248,7 +248,9 @@ export function attack(w, id, now, rng, opts = {}) {
   const dmg = rolled > a.hp ? a.hp : rolled;
   // Gems drop only on a critical hit, at the player's gem chance (gem perk now, tech tree later).
   const gem = natural && randInt(10000, rng) < Math.round(st.gemChance * 100); // natural crits only: a forced crit is not a gem roll
-  if (gem) { p.gems += 1n; p.gemsEarned += 1n; }
+  // Double Gem (tech): a gem drop has a chance to be 2 gems.
+  const gems = gem ? (randInt(100, rng) < techSum(p.tech || {}, 'gem2') ? 2 : 1) : 0;
+  if (gem) { p.gems += BigInt(gems); p.gemsEarned += BigInt(gems); }
   p.crits += crits;
   a.hp -= dmg;
   a.damage += dmg;
@@ -269,7 +271,7 @@ export function attack(w, id, now, rng, opts = {}) {
   const res = {
     ok: true, damage: dmg.toString(), coins: coins.toString(), killed: !!kill,
     slayer: kill ? kill.slayer : false, attempt: label, next: kill ? kill.next : null,
-    perk: kill ? kill.perk : null, crit, double, gem, ability: abilityPct !== 100 || forceCrit, boost,
+    perk: kill ? kill.perk : null, crit, double, gem, gems, ability: abilityPct !== 100 || forceCrit, boost,
     attacksLeft: p.bonusAttacks + Math.max(0, st.maxAttacks - p.attacksUsed),
   };
   w.events.push({ id: ++w.seq, attemptId: a.id, playerId: id, name: p.name, damage: dmg, kill: !!kill, crit, at: now });
@@ -372,7 +374,7 @@ export function buyTech(w, id, nodeId) {
   const rank = p.tech[nodeId] || 0;
   if (rank >= n.ranks) return { ok: false, error: 'maxed' };
   if (!techUnlocked(p.tech, nodeId)) return { ok: false, error: 'locked' };
-  const cost = techCost(nodeId);
+  const cost = techCost(nodeId, rank + 1);
   if (p.gems < cost) return { ok: false, error: 'not_enough_gems' };
   p.gems -= cost;
   p.tech[nodeId] = rank + 1;
@@ -461,7 +463,8 @@ const withPlayer = (w, id, f) => { const p = w.players.get(id); return p ? f(p) 
 export const gearInfo = (w, id) => withPlayer(w, id, (p) => gearState(p));
 export const gearEquip = (w, id, item) => withPlayer(w, id, (p) => equipItem(p, item));
 export const gearUnequip = (w, id, item) => withPlayer(w, id, (p) => unequipItem(p, item));
-export const gearMerge = (w, id, keep, feed) => withPlayer(w, id, (p) => mergeItems(p, keep, feed));
+export const gearMerge = (w, id, keep, feed, rng = Math.random) => withPlayer(w, id, (p) => mergeItems(p, keep, feed, rng));
+export const gearReroll = (w, id, item, what = 'stats', rng = Math.random) => withPlayer(w, id, (p) => rerollItem(p, item, what, rng));
 export const gearRecycle = (w, id, items) => withPlayer(w, id, (p) => recycleItems(p, items));
 export const gearCrate = (w, id, tier, rng = Math.random) => withPlayer(w, id, (p) => buyCrate(p, tier, rng));
 

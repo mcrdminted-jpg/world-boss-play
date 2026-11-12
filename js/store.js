@@ -37,9 +37,10 @@ export function createStore(api, refresh, goTree) {
   }
   function gemPanel(s) {
     return h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Gem Packs'), h('small', null, 'Spend gems in the Tech Tree')),
-      h('div', { class: 'packs three' }, GEM_PACKS.map((pk, i) => h('button', { class: 'pack', disabled: CAN_BUY && buying, onclick: () => (CAN_BUY ? buy(pk, s) : toast('Gem packs are sold in the iPhone app.')) },
+      h('div', { class: 'packs four' }, GEM_PACKS.map((pk, i) => h('button', { class: 'pack', disabled: CAN_BUY && buying, onclick: () => (CAN_BUY ? buy(pk, s) : toast('Gem packs are sold in the iPhone app.')) },
+        pk.tag ? h('span', { class: 'pack-tag' }, pk.tag) : null,
         h('span', { class: 'pack-n' }, `${pk.gems} Gem${pk.gems === 1 ? '' : 's'}`),
-        h('span', { class: 'pack-ico', style: `--s:${0.8 + i * 0.14}` }, icon('gem', 34 + i * 5, '#c48bff')),
+        h('span', { class: 'pack-ico', style: `--s:${0.8 + i * 0.1}` }, icon('gem', 30 + i * 4, '#c48bff')),
         h('span', { class: 'pack-price' }, CAN_BUY && buying ? '...' : (prices[pk.id] || pk.price)),
         CAN_BUY ? null : h('em', { class: 'soon-tag' }, 'App only')))),
       CAN_BUY ? h('p', { class: 'fine' }, 'One-time purchases. Gems are added to this account right away.') : null);

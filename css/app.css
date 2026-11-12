@@ -805,3 +805,23 @@ button.ach { color: inherit; font: inherit; cursor: pointer; }
 .dday.now { border-color: #ffcf5a; box-shadow: 0 0 10px #ffcf5a88; background: #2a2208; }
 .daily-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 11px; color: var(--muted); }
 .daily-key span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Splash: a real loading bar drawn over the one painted into the art (2026-11-10). */
+#studio-splash .fgbox { position: relative; width: min(100vw, 100vh); aspect-ratio: 1; }
+#studio-splash .fgbox img.fg { position: absolute; inset: 0; }
+#studio-splash .sbar { position: absolute; left: 26.9%; width: 46.2%; top: 69.15%; height: 2.45%; border-radius: 99px; overflow: hidden;
+  background: #060b1a; border: 1.5px solid #b9c6d8; box-shadow: 0 0 5px 5px #0c1730; }
+#studio-splash .sbar i { display: block; height: 100%; width: 4%; border-radius: 99px;
+  background: linear-gradient(90deg, #0b6fd6, #2fa4ff 60%, #d6f1ff); box-shadow: 0 0 10px #4db8ff;
+  animation: sbarload 6s cubic-bezier(.1, .7, .2, 1) forwards; }
+#studio-splash.full .sbar i { animation: none; width: 100%; transition: width .3s ease-out; }
+@keyframes sbarload { 0% { width: 4%; } 25% { width: 62%; } 100% { width: 92%; } }
+
+.trank { display: flex; align-items: center; } .trank > span { flex: 1; }
+.trank-cost { display: inline-flex; align-items: center; gap: 3px; font-style: normal; font-weight: 800; font-size: 12px; color: #c9a8ff; margin-left: 8px; }
+
+.gbtns.greroll { margin-top: 8px; }
+.gemtag { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 1px 7px; border-radius: 99px; background: #2a1c4d; color: #d9c2ff; font-weight: 800; font-size: 12px; }
+.packs.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.packs.four .pack { position: relative; }
+.pack-tag { position: absolute; top: -7px; left: 6px; padding: 1px 8px; border-radius: 99px; background: #ffcf5a; color: #2a1a00; font-size: 10.5px; font-weight: 900; }

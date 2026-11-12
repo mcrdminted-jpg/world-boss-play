@@ -2,7 +2,7 @@
 // and tuned without a server. Add ?dev=1 for time-travel tools (window.wbDev).
 import {
   createWorld, ensurePlayer, attack, buyUpgrade, claimRewards, setProfile, leaderboard, publicState, resolveExpiry,
-  setBadge, playerCard, setClass, useAbility, buyTech, adReward, claimDaily, gearInfo, gearEquip, gearUnequip, gearMerge, gearRecycle, gearCrate,
+  setBadge, playerCard, setClass, useAbility, buyTech, adReward, claimDaily, gearInfo, gearEquip, gearUnequip, gearMerge, gearRecycle, gearCrate, gearReroll,
 } from '../shared/engine.js';
 import { dropItem } from '../shared/gear.js';
 import { serialize, deserialize } from '../shared/serialize.js';
@@ -76,6 +76,7 @@ export function createMock() {
     gearMerge: (keep, feed) => delay(JSON.parse(JSON.stringify(gearMerge(w, ME, keep, feed)))),
     gearRecycle: (ids) => delay(gearRecycle(w, ME, ids)),
     gearCrate: (tier) => delay(JSON.parse(JSON.stringify(gearCrate(w, ME, tier)))),
+    gearReroll: (id, what) => delay(JSON.parse(JSON.stringify(gearReroll(w, ME, id, what)))),
     setProfile: (p) => delay(setProfile(w, ME, p)),
     setBadge: (b) => delay(setBadge(w, ME, b)),
     setClass: (c) => delay(setClass(w, ME, c, now())),

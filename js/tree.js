@@ -1,7 +1,7 @@
 // Tech Tree: one continuous branching map you can drag and pinch (spec: no tier pages). Locked nodes stay
 // visible and inspectable; only complete prerequisites unlock a node. Gems pay for ranks.
 import { h, toast, openSheet } from './dom.js';
-import { NODES, NODE, EFFECTS, TIER_COST, techUnlocked } from '../shared/tech.js';
+import { NODES, NODE, EFFECTS, rankCost, techUnlocked } from '../shared/tech.js';
 import { CLASSES, formatBig } from '../shared/combat.js';
 import { icon } from './icons.js';
 import { classGlyph } from './classes.js';
@@ -11,7 +11,7 @@ const BRANCH = {
   damage: { color: '#ffc45a', label: 'Damage' }, crit: { color: '#5fe07a', label: 'Critical' }, gem: { color: '#c48bff', label: 'Gems' },
   attacks: { color: '#63ccff', label: 'Attacks' }, coins: { color: '#ffcf4a', label: 'Coins' }, class: { color: '#ff6a4d', label: 'Class' },
 };
-const EFFECT_ICON = { damage: 'sword', boss: 'skull', crit: 'clover', critdmg: 'burst', gem: 'gem', attacks: 'swords', coins: 'coin', type: 'sword' };
+const EFFECT_ICON = { damage: 'sword', boss: 'skull', crit: 'clover', critdmg: 'burst', gem: 'gem', gem2: 'gem', attacks: 'swords', coins: 'coin', type: 'sword' };
 const UX = 74, UY = 92, NODE_W = 62; // map units to pixels
 const minX = Math.min(...NODES.map((n) => n.x)), maxX = Math.max(...NODES.map((n) => n.x));
 const maxY = Math.max(...NODES.map((n) => n.y));
@@ -101,7 +101,7 @@ export function createTree(api, refresh) {
     }
     const nodes = shown.map((n) => {
       const rank = tech[n.id] || 0, open = techUnlocked(tech, n.id) && (!n.cls || p.cls), max = rank >= n.ranks;
-      const afford = open && !max && gems >= BigInt(TIER_COST[n.tier]);
+      const afford = open && !max && gems >= BigInt(rankCost(n.depth, rank + 1));
       const cls = `tnode${max ? ' max' : ''}${open ? '' : ' locked'}${afford ? ' afford' : ''}`;
       const glyph = n.effect === 'type' && p.cls ? classGlyph(p.cls, 26) : icon(open ? EFFECT_ICON[n.effect] : 'lock', 26, open ? BRANCH[n.branch].color : '#6c77a8');
       return h('button', { class: cls, style: `left:${px(n) - NODE_W / 2}px;top:${py(n) - NODE_W / 2}px;--c:${BRANCH[n.branch].color}`,
@@ -121,10 +121,11 @@ export function createTree(api, refresh) {
 
   function openNode(n) {
     const p = s.player, tech = p.tech || {}, rank = tech[n.id] || 0, eff = EFFECTS[n.effect];
-    const open = techUnlocked(tech, n.id), cost = BigInt(TIER_COST[n.tier]), max = rank >= n.ranks;
+    const open = techUnlocked(tech, n.id), max = rank >= n.ranks, cost = BigInt(rankCost(n.depth, Math.min(rank + 1, n.ranks)));
     const needs = n.req.filter((r) => (tech[r] || 0) < 1);
     const rows = Array.from({ length: n.ranks }, (_, i) => h('div', { class: `trank${i < rank ? ' done' : i === rank ? ' next' : ''}` },
-      h('i', null, i + 1), `+${(i + 1) * eff.per}${eff.label.startsWith('%') ? '' : ' '}${eff.label}${n.effect === 'attacks' && i > 0 ? 's' : ''}`));
+      h('i', null, i + 1), h('span', null, `+${Math.round((i + 1) * eff.per * 100) / 100}${eff.label.startsWith('%') ? '' : ' '}${eff.label}${n.effect === 'attacks' && i > 0 ? 's' : ''}`),
+      i < rank ? null : h('em', { class: 'trank-cost' }, icon('gem', 12, '#c48bff'), `${rankCost(n.depth, i + 1)}`)));
     let why = null;
     if (n.cls && !p.cls) why = 'Pick a class first (Profile).';
     else if (!open) why = `Needs: ${needs.map((r) => `1 rank of ${NODE[r].name}`).join(', ')}`;
@@ -132,7 +133,7 @@ export function createTree(api, refresh) {
     const close = openSheet(
       h('div', { class: 'tsheet-head', style: `--c:${BRANCH[n.branch].color}` },
         h('span', { class: 'tn-box' }, n.effect === 'type' && p.cls ? classGlyph(p.cls, 28) : icon(EFFECT_ICON[n.effect], 28, BRANCH[n.branch].color)),
-        h('div', null, h('h3', null, n.name), h('small', null, `Tier ${n.tier} · ${rank}/${n.ranks} · ${cost} gem${cost === 1n ? '' : 's'} per rank`))),
+        h('div', null, h('h3', null, n.name), h('small', null, `Tier ${n.tier} · ${rank}/${n.ranks} · each rank costs 1 gem more`))),
       n.effect === 'type' && p.cls ? h('p', null, `Counts only against ${CLASSES[p.cls].prefers} bosses. Switching class refunds every gem spent here.`) : null,
       h('div', { class: 'tranks' }, rows),
       why ? h('p', { class: 'why' }, why) : null,

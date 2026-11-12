@@ -1,6 +1,6 @@
 // Player name rules. The name is the ONLY text other players ever see, so it must not carry contact info,
 // social handles or promotion. Strict on purpose: false positives just mean "pick another name".
-// The same rules run on the server (wb_name_check in 0002_functions.sql). Keep them identical.
+// The same rules run on the server (wb_name_check, last updated in 0019_name_filter.sql). Keep them identical.
 
 export const NAME_MIN = 3, NAME_MAX = 16, NAME_MAX_DIGITS = 4;
 
@@ -14,7 +14,18 @@ export const BLOCK_ANYWHERE = [
   // profanity and slurs (basic list, kids play this)
   'fuck', 'fuk', 'shit', 'bitch', 'cunt', 'dick', 'cock', 'pussy', 'porn', 'sex', 'nigg', 'nigga', 'fag', 'slut',
   'whore', 'rape', 'nazi', 'hitler', 'retard', 'penis', 'vagina', 'boob', 'tits', 'anal', 'cum', 'nude',
+  'asshole', 'bastard', 'piss', 'wank', 'twat', 'dildo', 'jizz', 'horny', 'pedo', 'molest', 'negro', 'chink', 'kike',
+  'tranny', 'dyke', 'beaner', 'wetback', 'jihad', 'terroris',
+  // religion: no deities, prophets or holy figures on a public leaderboard (the bare word "god" is in BLOCK_EXACT, so Godly and Godzilla stay fine)
+  'jesus', 'jehovah', 'yahweh', 'allah', 'muhammad', 'muhammed', 'mohammed', 'mohammad', 'mohamed', 'prophet',
+  'buddha', 'krishna', 'vishnu', 'shiva', 'satan', 'lucifer', 'messiah', 'antichrist', 'quran', 'koran', 'bible',
+  // politics: no politicians, parties or slogans
+  'trump', 'biden', 'kamala', 'obama', 'clinton', 'hillary', 'desantis', 'pelosi', 'putin', 'zelensk', 'netanyahu',
+  'stalin', 'mussolini', 'maga', 'democrat', 'republican', 'antifa', 'kkk', 'taliban', 'hamas', 'hezbollah', 'alqaeda',
+  'letsgobrandon', 'fjb', 'liberal', 'conservativ', 'communis', 'fascis', 'socialis',
 ];
+// The whole name (letters only) may not be exactly one of these. Too common inside normal words to block anywhere.
+export const BLOCK_EXACT = ['god', 'christ', 'kys', 'isis', 'vance', 'harris', 'bush', 'pence', 'musk', 'blm', 'gop', 'dnc', 'pope'];
 // Only as the first or last letters (short tags that are too common inside normal words).
 export const BLOCK_EDGE = ['ig', 'sc', 'yt', 'fb', 'ttv', 'tt', 'dm', 'of', 'tg', 'wa', 'ph', 'tel', 'mail', 'com', 'net', 'org'];
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'oh'];
@@ -31,7 +42,15 @@ export function nameError(raw) {
   const lower = name.toLowerCase();
   const letters = lower.replace(/[0-9]/g, '');
   const leet = lower.replace(/[0-9]/g, (d) => LEET[d]);
-  for (const w of BLOCK_ANYWHERE) if (letters.includes(w) || leet.includes(w)) return 'name_blocked';
+  // Stretched spellings count too: "Truuump" and "Tr4mmp" are read as "trump".
+  const squash = (s) => s.replace(/(.)\1+/g, '$1');
+  const sl = squash(letters), sx = squash(leet);
+  for (const w of BLOCK_ANYWHERE) {
+    if (letters.includes(w) || leet.includes(w)) return 'name_blocked';
+    const q = squash(w);
+    if (q.length >= 4 && (sl.includes(q) || sx.includes(q))) return 'name_blocked';
+  }
+  for (const w of BLOCK_EXACT) if (letters === w || leet === w || sl === w || sx === w) return 'name_blocked';
   for (const w of BLOCK_EDGE) if (letters.startsWith(w) || letters.endsWith(w)) return 'name_blocked';
   let n = 0;
   for (const w of NUMBER_WORDS) n += letters.split(w).length - 1;
@@ -43,5 +62,5 @@ export const NAME_ERROR_TEXT = {
   name_chars: 'Letters and numbers only. No spaces or symbols.',
   name_length: `Name must be ${NAME_MIN} to ${NAME_MAX} characters.`,
   name_digits: `Up to ${NAME_MAX_DIGITS} numbers in a name.`,
-  name_blocked: 'That name is not allowed. No social media, contact info or bad words.',
+  name_blocked: 'That name is not allowed. No bad words, religious or political names, social media or contact info.',
 };
