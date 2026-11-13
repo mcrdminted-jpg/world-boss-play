@@ -45,7 +45,7 @@ export function createSupabaseApi(url, key) {
     return r.json();
   }
 
-  // Gem purchase check: our iap-apple Edge Function asks Apple, then credits gems.
+  // Gem purchase check: our iap-apple / iap-google Edge Functions ask Apple or Google, then credit gems.
   async function fn(name, body) {
     await ensure();
     const r = await tfetch(`${url}/functions/v1/${name}`, {
@@ -67,10 +67,12 @@ export function createSupabaseApi(url, key) {
   return {
     mode: 'supabase',
     state: () => rpc('wb_state', {}),
-    attack: () => rpc('wb_attack', { p_key: uid() }),
+    // p_target is only sent for a State Boss hit, so World Boss attacks work on a server from before State Bosses too.
+    attack: (target) => rpc('wb_attack', target === 'state' ? { p_key: uid(), p_target: 'state' } : { p_key: uid() }),
+    stateSpawn: () => rpc('wb_state_spawn', {}),
     buy: (k) => rpc('wb_buy_upgrade', { p_key: k }),
     claim: () => rpc('wb_claim_rewards', {}),
-    setProfile: (p) => rpc('wb_set_profile', { p_name: p.name ?? null, p_country: p.country ?? null, p_state: p.state ?? null, p_zip: p.zip ?? null }),
+    setProfile: (p) => rpc('wb_set_profile', { p_name: p.name ?? null, p_country: p.country ?? null, p_state: p.state ?? null }),
     leaderboard: (scope, period) => rpc('wb_leaderboard', { p_scope: scope, p_period: period }),
     setBadge: (b) => rpc('wb_set_badge', { p_badge: b }),
     card: (pid) => rpc('wb_player_card', { p_pid: pid }),
@@ -79,6 +81,7 @@ export function createSupabaseApi(url, key) {
     buyTech: (n) => rpc('wb_buy_tech', { p_node: n }),
     adReward: (k) => rpc('wb_ad_reward', { p_kind: k }),
     dailyClaim: () => rpc('wb_daily_claim'),
+    giftClaim: (code) => rpc('wb_gift_claim', { p_code: code }),
     gear: () => rpc('wb_gear'),
     gearEquip: (id, on) => rpc('wb_gear_equip', { p_item: id, p_on: on }),
     gearMerge: (keep, feed) => rpc('wb_gear_merge', { p_keep: keep, p_feed: feed }),
@@ -86,6 +89,7 @@ export function createSupabaseApi(url, key) {
     gearCrate: (tier) => rpc('wb_gear_crate', { p_tier: tier }),
     gearReroll: (id, what) => rpc('wb_gear_reroll', { p_item: id, p_what: what }),
     iapVerify: (transactionId) => fn('iap-apple', { transactionId }),
+    iapVerifyGoogle: (purchaseToken, productId) => fn('iap-google', { purchaseToken, productId }),
     userId,
     deleteMe: async () => { const r = await rpc('wb_delete_me', {}); session = null; try { localStorage.removeItem(SKEY); } catch { /* ignore */ } return r; },
   };

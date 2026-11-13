@@ -828,3 +828,27 @@ button.ach { color: inherit; font: inherit; cursor: pointer; }
 .packs.four .pack-ico { height: 44px; }
 .packs.four .pack-price { font-size: 12.5px; padding: 6px 0; letter-spacing: -.2px; }
 .pack-tag { position: absolute; top: 0; left: 0; right: 0; padding: 2px 0; border-radius: 11px 11px 0 0; background: #ffcf5a; color: #2a1a00; font-size: 9.5px; font-weight: 900; text-align: center; white-space: nowrap; }
+
+/* holiday gift */
+.home > .gift-big { grid-area: gift; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 9px 12px; border-radius: 14px; color: #fff;
+  border: 1px solid #ffcf5a; background: linear-gradient(180deg, #b3243a, #6e1222); box-shadow: 0 0 18px #ff5a6e66; animation: claimpulse 1.4s ease-in-out infinite; }
+.home > .gift-big[hidden] { display: none; }
+.gift-big span { display: grid; text-align: left; } .gift-big b { color: #ffcf5a; font-size: 15px; } .gift-big small { font-size: 12.5px; font-weight: 700; }
+
+.home { grid-template-areas: "head" "tags" "stage" "gift" "claim" "actions" "more" "guide" "tiles";
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto auto auto; }
+@media (max-height: 760px) { .home { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto auto auto; } }
+
+/* State Boss strip (home) */
+.home { grid-template-areas: "head" "tags" "sb" "stage" "gift" "claim" "actions" "more" "guide" "tiles";
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto auto auto; }
+@media (max-height: 760px) { .home { grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto auto auto; } }
+.home > .sb { grid-area: sb; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 12px; border: 1px solid #ffffff1a; background: #141a33; }
+.home > .sb[hidden] { display: none; }
+.home > .sb.live { border-color: #7fe3ff88; box-shadow: 0 0 14px #37c8ff33; }
+.sb-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: var(--text); text-align: left; }
+.sb-info span { display: grid; min-width: 0; } .sb-info b { font-size: 14px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-info small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb .sb-switch { width: auto; flex: none; gap: 8px; padding: 0; border: 0; font-size: 12.5px; font-weight: 800; }
+.stage.state-mode { --glow: #37c8ff; --glow2: #2a6bff; }
+.stage.state-mode .art { filter: hue-rotate(150deg) saturate(1.15); }

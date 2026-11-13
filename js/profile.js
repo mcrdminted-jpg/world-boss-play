@@ -1,4 +1,5 @@
 import { h, toast, openSheet } from './dom.js';
+import { COUNTRIES, STATES } from '../shared/regions.js';
 import { formatBig, groupDigits, PERK_KEYS, PERK_LABEL } from '../shared/combat.js';
 import { nameError, NAME_ERROR_TEXT, NAME_MAX } from '../shared/namefilter.js';
 import { MILESTONES, BADGE_LABEL } from '../shared/badges.js';
@@ -39,16 +40,14 @@ function achievements(p) {
   return list;
 }
 
-const COUNTRIES = [['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kingdom'], ['AU', 'Australia'], ['NZ', 'New Zealand'], ['IE', 'Ireland'], ['DE', 'Germany'], ['FR', 'France'], ['ES', 'Spain'], ['IT', 'Italy'], ['NL', 'Netherlands'], ['SE', 'Sweden'], ['NO', 'Norway'], ['MX', 'Mexico'], ['BR', 'Brazil'], ['JP', 'Japan'], ['KR', 'South Korea'], ['IN', 'India'], ['PH', 'Philippines'], ['ZA', 'South Africa']];
-const STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
-const ERR = { ...NAME_ERROR_TEXT, bad_zip: 'ZIP must be 5 digits.' };
+const ERR = { ...NAME_ERROR_TEXT };
 
 export function createProfile(api, refresh, goBoards) {
   const el = h('div', { class: 'scroll' });
 
   async function save(patch) {
     const r = await api.setProfile(patch);
-    if (!r.ok) toast(ERR[r.error] || 'Could not save.');
+    if (!r.ok) toast(r.error === 'state_locked' ? `You moved recently. You can move again on ${new Date(r.nextAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.` : ERR[r.error] || 'Could not save.', 4000);
     await refresh();
   }
 
@@ -93,7 +92,6 @@ export function createProfile(api, refresh, goBoards) {
       ? h('label', { class: 'field' }, 'State', h('select', { onchange: (e) => { e.target.blur(); save({ state: e.target.value }); } },
         h('option', { value: '' }, 'Not set'), STATES.map((c) => h('option', { value: c, selected: c === p.state }, c))))
       : null;
-    const zip = h('input', { value: p.zip, inputmode: 'numeric', maxlength: 5, placeholder: 'Optional', onchange: (e) => save({ zip: e.target.value.trim() }) });
     const badges = p.slayer.length
       ? h('div', { class: 'badges' }, p.slayer.map((n) => h('span', { class: 'badge' }, `Slayer of World Boss #${n}`)))
       : h('div', { style: 'color:var(--muted);font-size:14px' }, 'No killing blows yet.');
@@ -160,8 +158,10 @@ export function createProfile(api, refresh, goBoards) {
       h('div', { class: 'card' }, h('h2', null, 'You'),
         h('label', { class: 'field' }, 'Player name', nameIn),
         h('label', { class: 'field' }, 'Country', country), state,
-        h('label', { class: 'field' }, 'ZIP code (for local leaderboards)', zip),
-        h('div', { style: 'color:var(--muted);font-size:12px' }, 'Only your name and damage are shown to others. Your ZIP is never shown. Names are letters and numbers only: no social media, contact info or bad words.')),
+        h('div', { style: 'color:var(--muted);font-size:12px;margin-bottom:6px' }, p.regionNextAt
+          ? `You moved recently. You can move again on ${new Date(p.regionNextAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`
+          : `Your ${p.country === 'US' ? 'state' : 'country'} decides which State Boss you can fight and which holiday gifts you get. After your first pick you can move once every 7 days.`),
+        h('div', { style: 'color:var(--muted);font-size:12px' }, 'Only your name and damage are shown to others. Names are letters and numbers only: no social media, contact info or bad words.')),
       h('div', { class: 'card' }, h('h2', null, 'Permanent boss perks'),
         h('div', { style: 'color:var(--muted);font-size:12px;margin-bottom:6px' },
           `${p.perkCount} earned. Every World Boss you hit gives +1% when it falls. Crit, lucky and gem perks are banked now and switch on when those systems launch.`),

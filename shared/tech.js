@@ -2,8 +2,9 @@
 // One source of truth: the UI draws it, the engine applies it, and scripts/gen-tech-sql.mjs seeds the SQL table.
 // A node unlocks once every prerequisite node has at least 1 rank (changed 2026-11-10, was all ranks). Viewing never unlocks anything.
 // Gems for a rank climb by 1 every rank and carry on outward by unlock step (2026-11-11): the core costs 1,2,3,4,5;
-// every node the core unlocks costs 6..10; the nodes those unlock cost 11..15; and so on. depth = unlock steps from the core.
-export const rankCost = (depth, rank) => depth * 5 + rank; // rank = the rank being bought, 1..5
+// every node the core unlocks also costs 1..5; the next ring 6..10; and so on. depth = unlock steps from the core.
+// Revised 2026-11-11 (Andy): the core and the ring it unlocks both cost 1..5; each ring further out adds 5.
+export const rankCost = (depth, rank) => Math.max(depth - 1, 0) * 5 + rank; // rank = the rank being bought, 1..5
 export const EFFECTS = {
   damage:  { label: '% damage', per: 2 },
   boss:    { label: '% damage vs World Bosses', per: 2 },

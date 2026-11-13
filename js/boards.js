@@ -3,7 +3,7 @@ import { formatBig } from '../shared/combat.js';
 import { nameTag, openCard } from './players.js';
 import { icon } from './icons.js';
 
-const SCOPES = [['local', 'Local'], ['state', 'State'], ['country', 'Country'], ['world', 'World']];
+const SCOPES = [['state', 'State'], ['country', 'Country'], ['world', 'World']];
 const PERIODS = [['current', 'This boss'], ['all', 'All time']];
 
 export function createBoards(api, goProfile) {
@@ -29,8 +29,8 @@ export function createBoards(api, goProfile) {
       const rows = r.top.map((x) => row(x, x.me));
       if (r.me && r.me.rank > r.top.length) rows.push(row(r.me, true));
       if (!rows.length) {
-        const need = scope === 'local' ? 'Add your ZIP code in Profile to see local damage.' : scope === 'state' ? 'Pick your state in Profile to see state damage.' : 'No damage dealt here yet.';
-        body.replaceChildren(h('div', { class: 'empty' }, need), (scope === 'local' || scope === 'state') ? h('div', { style: 'text-align:center' }, h('button', { class: 'btn', onclick: goProfile }, 'Open Profile')) : null);
+        const need = scope === 'state' ? 'Pick your state in Profile to see state damage.' : 'No damage dealt here yet.';
+        body.replaceChildren(h('div', { class: 'empty' }, need), scope === 'state' ? h('div', { style: 'text-align:center' }, h('button', { class: 'btn', onclick: goProfile }, 'Open Profile')) : null);
       } else body.replaceChildren(...rows);
     } catch { body.replaceChildren(h('div', { class: 'empty' }, 'Could not load the leaderboard.')); }
   }

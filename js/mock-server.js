@@ -2,7 +2,7 @@
 // and tuned without a server. Add ?dev=1 for time-travel tools (window.wbDev).
 import {
   createWorld, ensurePlayer, attack, buyUpgrade, claimRewards, setProfile, leaderboard, publicState, resolveExpiry,
-  setBadge, playerCard, setClass, useAbility, buyTech, adReward, claimDaily, gearInfo, gearEquip, gearUnequip, gearMerge, gearRecycle, gearCrate, gearReroll,
+  setBadge, playerCard, setClass, useAbility, buyTech, adReward, claimDaily, claimGift, stateSpawn, gearInfo, gearEquip, gearUnequip, gearMerge, gearRecycle, gearCrate, gearReroll,
 } from '../shared/engine.js';
 import { dropItem } from '../shared/gear.js';
 import { serialize, deserialize } from '../shared/serialize.js';
@@ -10,9 +10,9 @@ import { serialize, deserialize } from '../shared/serialize.js';
 const KEY = 'wb-mock-v4'; // v4: tech tree, participation gems (old saves are dropped)
 const ME = 'me';
 const BOTS = [
-  ['Frostfang', 'US', 'WA', '98391'], ['EmberWolf', 'US', 'WA', '98388'], ['NightOwl', 'US', 'WA', '98001'], ['Rook', 'US', 'OR', '97201'],
-  ['Valkyrie', 'US', 'CA', '94105'], ['Thorn', 'US', 'TX', '73301'], ['Skald', 'CA', 'ON', ''], ['Mirage', 'GB', '', ''],
-  ['IronWill', 'US', 'WA', '98390'], ['Tidecaller', 'AU', '', ''], ['Hex', 'US', 'NY', '10001'], ['Bramble', 'DE', '', ''],
+  ['Frostfang', 'US', 'WA'], ['EmberWolf', 'US', 'WA'], ['NightOwl', 'US', 'WA'], ['Rook', 'US', 'OR'],
+  ['Valkyrie', 'US', 'CA'], ['Thorn', 'US', 'TX'], ['Skald', 'CA', ''], ['Mirage', 'GB', ''],
+  ['IronWill', 'US', 'WA'], ['Tidecaller', 'AU', ''], ['Hex', 'US', 'NY'], ['Bramble', 'DE', ''],
 ];
 
 function load() {
@@ -31,9 +31,9 @@ export function createMock() {
   const now = () => Date.now() + offset;
   let w = load() || createWorld(now());
   ensurePlayer(w, ME, Math.random, undefined, now());
-  BOTS.forEach(([name, country, state, zip], i) => {
+  BOTS.forEach(([name, country, state], i) => {
     const b = ensurePlayer(w, `bot-${i}`, Math.random, name, now() - (i + 1) * 86400000 * 9);
-    if (!b.zip && !b.state) { b.country = country; b.state = state; b.zip = zip; b.damageRank = (i * 3) % 13; b.cls = ['warrior', 'barbarian', 'rogue', 'archer', 'mage'][i % 5]; b.up.crit_chance = i % 9; }
+    if (!b.seeded) { b.seeded = true; b.country = country; b.state = state; b.damageRank = (i * 3) % 13; b.cls = ['warrior', 'barbarian', 'rogue', 'archer', 'mage'][i % 5]; b.up.crit_chance = i % 9; }
   });
 
   const save = () => {
@@ -46,6 +46,8 @@ export function createMock() {
   // Fake community: one random bot swings every couple of seconds.
   setInterval(() => {
     if (Math.random() < 0.35) attack(w, `bot-${Math.floor(Math.random() * BOTS.length)}`, now(), Math.random, { skipLimit: true });
+    // Bots in a region with a State Boss chip at it too.
+    if (Math.random() < 0.2) attack(w, `bot-${Math.floor(Math.random() * BOTS.length)}`, now(), Math.random, { skipLimit: true, target: 'state' });
   }, 2000);
   setInterval(save, 4000);
   addEventListener('beforeunload', save);
@@ -60,6 +62,8 @@ export function createMock() {
       gear(n = 10, luck = 1) { for (let i = 0; i < n; i++) dropItem(w.players.get(ME), Math.random, luck); },
       scrap(n) { const p = w.players.get(ME); gearInfo(w, ME); p.scrap += n; },
       refill() { w.players.get(ME).attacksUsed = 0; },
+      summon(n = 1) { w.players.get(ME).summons = (w.players.get(ME).summons || 0) + n; },
+      botSummon(i = 3) { const b = w.players.get(`bot-${i}`); b.summons = 1; return stateSpawn(w, b.id, now()); },
       reset() { localStorage.removeItem(KEY); location.reload(); },
     };
   }
@@ -68,7 +72,8 @@ export function createMock() {
   return {
     mode: 'mock',
     state: () => delay(JSON.parse(JSON.stringify(publicState(w, ME, now()), (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))),
-    attack: () => delay(attack(w, ME, now(), Math.random)),
+    attack: (target) => delay(attack(w, ME, now(), Math.random, { target })),
+    stateSpawn: () => delay(stateSpawn(w, ME, now())),
     buy: (k) => delay(buyUpgrade(w, ME, k)),
     claim: () => delay(claimRewards(w, ME)),
     gear: () => delay(JSON.parse(JSON.stringify(gearInfo(w, ME)))),
@@ -77,12 +82,13 @@ export function createMock() {
     gearRecycle: (ids) => delay(gearRecycle(w, ME, ids)),
     gearCrate: (tier) => delay(JSON.parse(JSON.stringify(gearCrate(w, ME, tier)))),
     gearReroll: (id, what) => delay(JSON.parse(JSON.stringify(gearReroll(w, ME, id, what)))),
-    setProfile: (p) => delay(setProfile(w, ME, p)),
+    setProfile: (p) => delay(setProfile(w, ME, p, now())),
     setBadge: (b) => delay(setBadge(w, ME, b)),
     setClass: (c) => delay(setClass(w, ME, c, now())),
     useAbility: () => delay(useAbility(w, ME, now())),
     buyTech: (n) => delay(buyTech(w, ME, n)),
     dailyClaim: () => delay(JSON.parse(JSON.stringify(claimDaily(w, ME, now())))),
+    giftClaim: (code) => delay(claimGift(w, ME, code, now())),
     adReward: (k) => delay(JSON.parse(JSON.stringify(adReward(w, ME, k, now()), (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))),
     deleteMe: () => { try { localStorage.removeItem(KEY); } catch { /* ignore */ } return delay({ ok: true }); },
     card: (pid) => delay(JSON.parse(JSON.stringify(playerCard(w, pid), (_k, v) => (typeof v === 'bigint' ? v.toString() : v)))),

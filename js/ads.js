@@ -4,13 +4,15 @@ const C = window.Capacitor;
 const PLATFORM = C && C.getPlatform ? C.getPlatform() : 'web';
 const NATIVE = !!(C && C.isNativePlatform && C.isNativePlatform());
 
-// Live rewarded ad units. Android has none yet, so ads stay off there until one is added.
-const UNITS = { ios: 'ca-app-pub-5603864323887647/3239998622', android: null };
+// Live rewarded ad units (AdMob publisher pub-5603864323887647). The App IDs live in ios/App/App/Info.plist
+// (iOS app ~8576744922) and android/app/src/main/AndroidManifest.xml (Android app ~6408217904, added 2026-11-12).
+const UNITS = { ios: 'ca-app-pub-5603864323887647/3239998622', android: 'ca-app-pub-5603864323887647/6913670278' };
 // Google's public test units, used when the page is opened with ?testads=1 or in a debug build.
 const TEST_UNITS = { ios: 'ca-app-pub-3940256099942544/1712485313', android: 'ca-app-pub-3940256099942544/5224354917' };
-// TEST MODE IS ON until the App Store release. Google test ads always fill and pay nothing, and they keep Andy's
-// AdMob account safe: watching your own live ads counts as invalid traffic. Flip LIVE_ADS to true before submitting.
-const LIVE_ADS = false;
+// LIVE for the store release (2026-11-12). Watching your own live ads counts as invalid traffic, so every phone the
+// team plays on must be added in AdMob > Settings > Test devices: AdMob then sends that phone test ads automatically.
+// Setting this to false makes every phone show Google's test ads (they pay nothing): never ship a store build that way.
+const LIVE_ADS = true;
 const TESTING = !LIVE_ADS || /[?&]testads=1/.test(location.search);
 
 const unit = () => (TESTING ? TEST_UNITS[PLATFORM] : UNITS[PLATFORM]) || null;

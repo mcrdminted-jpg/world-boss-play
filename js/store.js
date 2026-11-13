@@ -25,7 +25,8 @@ export function createStore(api, refresh, goTree) {
     recoverPurchases(api).then((n) => { if (n > 0) { toast(`${n} gem${n === 1 ? '' : 's'} from an earlier purchase added.`, 3000); refresh(); } });
   }
   const BUY_ERR = { pending: 'Purchase is waiting for approval. Gems arrive when it clears.', not_your_purchase: 'That purchase belongs to another account.',
-    refunded: 'That purchase was refunded.', apple_key_not_configured: 'Purchases are not switched on yet.', verify_failed: 'Paid, but the server could not be reached. Your gems will be added next time you open the Store.' };
+    refunded: 'That purchase was refunded.', apple_key_not_configured: 'Purchases are not switched on yet.', google_key_not_configured: 'Purchases are not switched on yet.',
+    google_permission_missing: 'Purchases are not switched on yet.', google_key_rejected: 'Purchases are not switched on yet.', verify_failed: 'Paid, but the server could not be reached. Your gems will be added next time you open the Store.' };
   async function buy(pack, s) {
     if (buying) return;
     buying = true; render(s);
@@ -37,7 +38,7 @@ export function createStore(api, refresh, goTree) {
   }
   function gemPanel(s) {
     return h('div', { class: 'panel store-panel' }, h('div', { class: 'panel-head' }, h('b', null, 'Gem Packs'), h('small', null, 'Spend gems in the Tech Tree')),
-      h('div', { class: 'packs four' }, GEM_PACKS.map((pk, i) => h('button', { class: 'pack', disabled: CAN_BUY && buying, onclick: () => (CAN_BUY ? buy(pk, s) : toast('Gem packs are sold in the iPhone app.')) },
+      h('div', { class: 'packs four' }, GEM_PACKS.map((pk, i) => h('button', { class: 'pack', disabled: CAN_BUY && buying, onclick: () => (CAN_BUY ? buy(pk, s) : toast('Gem packs are sold in the phone app.')) },
         pk.tag ? h('span', { class: 'pack-tag' }, pk.tag) : null,
         h('span', { class: 'pack-n' }, `${pk.gems} Gem${pk.gems === 1 ? '' : 's'}`),
         h('span', { class: 'pack-ico', style: `--s:${0.8 + i * 0.1}` }, icon('gem', 30 + i * 4, '#c48bff')),
@@ -68,7 +69,7 @@ export function createStore(api, refresh, goTree) {
         h('div', { class: 'earn' },
           gemAdRow(p, s),
           h('div', { class: 'earn-row' }, icon('gem', 26), h('div', null, h('b', null, 'Critical hits'), h('small', null, `Every crit has a ${p.gemChance}% chance to drop a gem. Raise it in the Tech Tree.`))),
-          h('div', { class: 'earn-row' }, icon('skull', 26), h('div', null, h('b', null, 'Help kill bosses'), h('small', null, '2 gems for every World Boss you hit before it falls, 1 for each Lieutenant.'))),
+          h('div', { class: 'earn-row' }, icon('skull', 26), h('div', null, h('b', null, 'Help kill bosses'), h('small', null, 'Every fighter gets gems when a boss falls. Top damage gets the most: up to 10 gems for #1 on a World Boss.'))),
           h('div', { class: 'earn-row' }, icon('trophy', 26), h('div', null, h('b', null, 'Pending rewards'), h('small', null, `${pr.count || 0} waiting: ${formatBig(pr.coins || '0')} coins, ${formatBig(pr.gems || '0')} gems. Claim on Home.`))),
           h('button', { class: 'btn', onclick: goTree }, 'Spend gems in the Tech Tree')));
       if (CAN_BUY) body = [gemPanel(s), body];

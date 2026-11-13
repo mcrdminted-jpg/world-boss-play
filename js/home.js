@@ -8,6 +8,7 @@ import { sfx } from './sfx.js';
 import { adsSupported, playRewarded } from './ads.js';
 import { TIERS, SLOT_NAME } from '../shared/gear.js';
 import { DAILY, dailyText } from '../shared/daily.js';
+import { regionName, regionPlace } from '../shared/regions.js';
 
 const CLASS_SPARK = { warrior: ['#ffe6a0', '#ffb347', '#fff'], barbarian: ['#ff7a59', '#ffb347', '#ff3b2f'], rogue: ['#d1a8ff', '#9a5cff', '#fff'], archer: ['#a8ffb8', '#4fdc72', '#fff'], mage: ['#9fd8ff', '#4fa8ff', '#fff'] };
 
@@ -68,6 +69,103 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
   const adBoost = h('button', { class: 'ad-boost', hidden: true, onclick: () => watchAd('damage') });
   // Live hit stream on the arena, like a stream chat: last 10 hits, newest at the bottom.
   const feed = h('div', { class: 'hit-stream' });
+  const giftBtn = h('button', { class: 'gift-big', hidden: true, onclick: () => onGift() });
+  let giftNow = null, giftBusy = false;
+  async function onGift() {
+    if (!giftNow || giftBusy) return; giftBusy = true; giftBtn.disabled = true;
+    try {
+      const r = await api.giftClaim(giftNow.code);
+      if (r.ok) { sfx.coin(); flyIcons(giftBtn, document.getElementById('gem-pill'), 'gem', 8); toast(`${giftNow.title} +${r.gems} gems and +${r.attacks} attacks.`, 3500); }
+      else toast(r.error === 'already_claimed' ? 'Gift already claimed.' : 'This gift has ended.');
+    } catch (e) { toast('Connection problem. Try again.'); }
+    giftBusy = false; giftBtn.disabled = false; await refresh();
+  }
+  // State Boss strip: the boss in your region (with a switch to aim your attacks at it), a summon you hold,
+  // or a boss in another region that you could move to.
+  let target = 'world', sbKey = '';
+  const sbEl = h('div', { class: 'sb', hidden: true });
+  const seen = (k, v) => { try { if (localStorage.getItem(k) === v) return true; localStorage.setItem(k, v); } catch { /* ignore */ } return false; };
+  const pctOf = (x) => { const m = BigInt(x.maxHp); return m > 0n ? Number((BigInt(x.hp) * 1000n) / m) / 10 : 0; };
+  const leftOf = (x) => countdown(x.endsAt - (Date.now() + s.skew));
+  function paintState() {
+    const p = s.player, sb = p && p.stateBoss, others = (s.stateBosses || []).filter((x) => !p || x.region !== p.region);
+    if (!sb) target = 'world';
+    const key = JSON.stringify([sb && [sb.attemptId, sb.hp, sb.fighters], target, p && p.summons, p && p.region, others.map((x) => x.region)]);
+    if (key === sbKey) return;
+    sbKey = key;
+    if (sb) {
+      if (!seen('wb-sb-seen', String(sb.attemptId))) toast(`${sb.summoner || 'A player'} summoned a State Boss in ${regionName(sb.region)}! Flip the switch to fight it.`, 5000);
+      const on = target === 'state';
+      sbEl.className = 'sb live';
+      sbEl.replaceChildren(
+        h('button', { class: 'sb-info', onclick: openState }, icon('skull', 20, '#7fe3ff'),
+          h('span', null, h('b', null, `State Boss: ${regionName(sb.region)}`), h('small', null, `${pctOf(sb).toFixed(1)}% HP \u00b7 ${leftOf(sb)} left`))),
+        h('button', { class: `slide sb-switch${on ? ' on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', 'aria-label': 'Attack the State Boss',
+          onclick: () => { if (busy || queued) return; target = on ? 'world' : 'state'; artKey = ''; update(s); } }, h('span', null, 'Fight it'), h('i', null, h('b'))));
+    } else if (p && p.summons > 0) {
+      sbEl.className = 'sb';
+      sbEl.replaceChildren(h('button', { class: 'sb-info wide', onclick: openSummon }, icon('skull', 20, '#7fe3ff'),
+        h('span', null, h('b', null, `You hold ${p.summons > 1 ? `${p.summons} State Boss summons` : 'a State Boss summon'}`), h('small', null, p.region ? `Tap to summon it in ${regionName(p.region)}` : 'Pick your state in Profile to use it'))));
+    } else if (others.length) {
+      const o = others[0];
+      if (!seen('wb-sb-far', `${o.region}|${o.endsAt}`)) toast(`${o.summoner || 'A player'} summoned a State Boss in ${regionName(o.region)}.`, 4000);
+      sbEl.className = 'sb';
+      sbEl.replaceChildren(h('button', { class: 'sb-info wide', onclick: openState }, icon('skull', 20, '#8a95c4'),
+        h('span', null, h('b', null, others.length > 1 ? `${others.length} State Bosses are up` : `State Boss in ${regionName(o.region)}`), h('small', null, 'Tap to see it. You can move there to join.'))));
+    } else { sbEl.hidden = true; return; }
+    sbEl.hidden = false;
+  }
+  function openSummon() {
+    const p = s.player;
+    if (!p.region) { toast('Pick your state in Profile first.'); if (goProfile) goProfile(); return; }
+    let close = () => {};
+    const go = h('button', { class: 'btn', onclick: async () => {
+      go.disabled = true;
+      try {
+        const r = await api.stateSpawn();
+        close();
+        if (r.ok) { sfx.kill(); target = 'state'; toast(`State Boss summoned in ${regionName(r.region)}!`, 3500); }
+        else toast(r.error === 'already_active' ? 'Your region already has a State Boss. Your summon is kept for later.' : r.error === 'no_region' ? 'Pick your state in Profile first.' : 'Could not summon. Try again.', 3500);
+      } catch (e) { toast('Connection problem. Try again.'); }
+      await refresh();
+    } }, 'Summon');
+    close = openSheet(h('h2', null, `Summon a State Boss in ${regionName(p.region)}?`),
+      h('p', null, `Only players in ${regionName(p.region)} can attack it. It has a tenth of the World Boss's HP and stays for 3 days.`),
+      h('p', { class: 'muted', style: 'font-size:13px' }, 'It uses your normal daily attacks. When it falls, you get 20 gems for summoning it and everyone else who hit it gets 1, plus coins and a piece of gear each. Friends in other places can move here to join.'),
+      h('div', { style: 'display:flex;gap:8px;margin-top:12px' }, go, h('button', { class: 'btn ghost', onclick: () => close() }, 'Not now')));
+  }
+  function openState() {
+    const p = s.player, sb = p.stateBoss, others = (s.stateBosses || []).filter((x) => x.region !== p.region);
+    let close = () => {};
+    const move = async (region) => {
+      close();
+      try {
+        const r = await api.setProfile(regionPlace(region));
+        toast(r.ok ? `You moved to ${regionName(region)}. You can move again in 7 days.` : r.error === 'state_locked' ? `You moved recently. You can move again on ${new Date(r.nextAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.` : 'Could not move. Try again.', 4000);
+      } catch (e) { toast('Connection problem. Try again.'); }
+      await refresh();
+    };
+    close = openSheet(h('h2', null, 'State Bosses'),
+      h('p', { class: 'muted', style: 'font-size:13px;margin:0 0 8px' }, 'A rare summon drops from World Boss rewards. Whoever holds one can summon a boss that only their state (or country, outside the US) can attack. It uses your normal attacks.'),
+      sb ? h('div', { class: 'card', style: 'margin:0 0 8px' },
+        h('div', { class: 'card-row' }, h('h2', null, `${regionName(sb.region)} (yours)`), h('small', null, `${leftOf(sb)} left`)),
+        h('div', { class: 'phero-bar' }, h('i', { style: `width:${pctOf(sb)}%` })),
+        h('div', { class: 'kv' }, h('span', null, 'HP'), h('span', null, `${formatBig(sb.hp)} / ${formatBig(sb.maxHp)}`)),
+        h('div', { class: 'kv' }, h('span', null, 'Summoned by'), h('span', null, sb.summoner || 'A player')),
+        h('div', { class: 'kv' }, h('span', null, 'Your damage'), h('span', null, formatBig(sb.myDamage))),
+        sb.top.map((t, i) => h('div', { class: 'kv' }, h('span', null, `#${i + 1} ${t.name}${t.me ? ' (you)' : ''}`), h('span', null, formatBig(t.damage))))) : null,
+      others.map((o) => h('div', { class: 'card', style: 'margin:0 0 8px' },
+        h('div', { class: 'card-row' }, h('h2', null, regionName(o.region)), h('small', null, `${leftOf(o)} left`)),
+        h('div', { class: 'phero-bar' }, h('i', { style: `width:${pctOf(o)}%` })),
+        h('div', { class: 'kv' }, h('span', null, 'Summoned by'), h('span', null, o.summoner || 'A player')),
+        h('div', { class: 'kv' }, h('span', null, 'Fighting'), h('span', null, `${o.fighters}`)),
+        h('button', { class: 'btn', style: 'margin-top:8px', disabled: !!p.regionNextAt, onclick: () => move(o.region) }, `Move to ${regionName(o.region)}`))),
+      !sb && !others.length ? h('p', null, 'No State Boss is up right now.') : null,
+      others.length ? h('p', { class: 'muted', style: 'font-size:12px' }, p.regionNextAt
+        ? `You moved recently. You can move again on ${new Date(p.regionNextAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`
+        : 'Moving changes your state or country in Profile. After a move you wait 7 days before you can move again.') : null,
+      h('div', { style: 'display:flex;gap:8px;margin-top:10px' }, h('button', { class: 'btn ghost', onclick: () => close() }, 'Close')));
+  }
   const dailyBtn = h('button', { class: 'daily-btn', hidden: true, 'aria-label': 'Daily rewards', onclick: () => openDaily() }, icon('chest', 18, '#ffcf5a'), h('span', null, 'Daily'));
   const boardBtn = h('button', { class: 'board-btn', 'aria-label': 'Leaderboard', onclick: () => goBoards && goBoards() }, icon('trophy', 18, '#ffcf5a'));
   let feedTop = null;
@@ -93,7 +191,9 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
   const el = h('section', { class: 'home' },
     h('div', { class: 'boss-head' }, h('div', { class: 'titles' }, labelEl, nameEl, h('div', { class: 'timeline' }, icon('clock', 12), timerEl))),
     tagsEl,
+    sbEl,
     stage,
+    giftBtn,
     claimBtn,
     h('div', { class: 'actions' },
       h('div', { class: 'left' }, h('small', null, 'Attacks Left'), h('div', { class: 'left-num' }, icon('swords', 18), leftNum), leftSub),
@@ -224,12 +324,16 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
     s = state;
     done = 0; // fresh server count already includes every finished attack
     const b = s.boss, p = s.player;
-    nameEl.textContent = b.type ? `${b.name} \u00b7 ${b.type}` : b.name;
-    labelEl.textContent = b.label;
+    paintState();
+    // With the switch on, the arena shows the State Boss: its name, HP and timer. Attacks go to it.
+    const sv = target === 'state' && p && p.stateBoss ? p.stateBoss : null;
+    nameEl.textContent = sv ? `Summoned by ${sv.summoner || 'a player'} \u00b7 ${b.type}` : b.type ? `${b.name} \u00b7 ${b.type}` : b.name;
+    labelEl.textContent = sv ? `${regionName(sv.region)} State Boss` : b.label;
     stage.dataset.type = String(b.type || '').toLowerCase();
-    rewardEl.hidden = !b.perk;
+    stage.classList.toggle('state-mode', !!sv);
+    rewardEl.hidden = !b.perk || !!sv;
     if (b.perk) rewardEl.textContent = `Kill: +1% ${PERK_LABEL[b.perk]} forever`;
-    const hp = BigInt(b.hp), max = BigInt(b.maxHp);
+    const hp = BigInt((sv || b).hp), max = BigInt((sv || b).maxHp);
     const pctHp = max > 0n ? Number((hp * 1000n) / max) / 10 : 0;
     hpFill.style.width = `${pctHp}%`;
     // the pale ghost bar trails the real one, so every chunk of damage is visible
@@ -254,6 +358,9 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
       adBoost.classList.toggle('ready', p.boostLeft > 0);
       adBoost.replaceChildren(h('b', null, '2x'), h('span', null, p.boostLeft > 0 ? `Ready x${p.boostLeft}` : 'Watch ad'));
       adBoost.disabled = adBusy || !canBoost;
+      giftNow = p.gift || null;
+      giftBtn.hidden = !giftNow;
+      if (giftNow) giftBtn.replaceChildren(icon('chest', 22, '#ffcf5a'), h('span', null, h('b', null, giftNow.title), h('small', null, `Open your gift: ${giftNow.gems} gems + ${giftNow.attacks} attacks`)));
       lastDaily = p.daily || null;
       dailyBtn.hidden = !lastDaily;
       dailyBtn.classList.toggle('ready', !!(lastDaily && lastDaily.ready));
@@ -403,7 +510,8 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
 
   function tick() {
     if (!s) return;
-    timerEl.textContent = `${countdown(s.boss.endsAt - (Date.now() + s.skew))} left`;
+    const sv = target === 'state' && s.player && s.player.stateBoss;
+    timerEl.textContent = `${countdown((sv || s.boss).endsAt - (Date.now() + s.skew))} left`;
     if (liveHits(Date.now() + s.skew).length !== feedLive) renderFeed();
   }
 
@@ -438,8 +546,9 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
 
   async function attackOnce() {
     try {
-      const r = await api.attack();
+      const r = await api.attack(target);
       if (!r.ok) {
+        if (r.error === 'no_state_boss') { target = 'world'; toast('The State Boss is gone. Your attack was not used.'); return true; }
         toast(r.error === 'no_attacks' ? 'No attacks left today. They reset at midnight Pacific.' : `Attack failed: ${r.error}`);
         return true;
       }
@@ -461,7 +570,8 @@ export function createHome(api, refresh, goProfile, goBoards, goGear) {
         stage.append(ban); setTimeout(() => ban.remove(), 2400);
         flyIcons(art, document.getElementById('coin-pill'), 'coin', 12);
         const perk = r.perk ? ` Permanent +1% ${PERK_LABEL[r.perk]}.` : '';
-        toast(r.slayer ? `${r.attempt} defeated. You landed the killing blow!${perk}` : `${r.attempt} defeated.${perk} Next: ${r.next}`, 3600);
+        if (r.target === 'state') { target = 'world'; toast('State Boss defeated! Claim your reward.', 3600); }
+        else toast(r.slayer ? `${r.attempt} defeated. You landed the killing blow!${perk}` : `${r.attempt} defeated.${perk} Next: ${r.next}`, 3600);
         await new Promise((res) => setTimeout(res, 700));
         artKey = ''; // next refresh loads the new boss
         return true; // stop the queue at a kill so leftover taps don't hit the next boss blind

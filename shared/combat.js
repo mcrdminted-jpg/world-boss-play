@@ -116,6 +116,20 @@ export function attemptLabel(mainNumber, depth) {
 }
 
 // Participation reward (coins). Provisional defaults, tune after simulation.
+// Gems for a defeated boss by damage place (Andy, 2026-11-12). place is 1-based; ties share the better place.
+// World Boss: #1 10, #2-3 7, #4-5 5, #6-10 4, rest of the top quarter 3, everyone who hit it 2.
+// Lieutenant: #1 3, #2-5 2, everyone else 1.
+export const RANK_GEMS = {
+  main: [[1, 10], [3, 7], [5, 5], [10, 4]], mainQuarter: 3, mainBase: 2,
+  lt: [[1, 3], [5, 2]], ltBase: 1,
+};
+export function rankGems(kind, place, fighters) {
+  const T = kind === 'main' ? RANK_GEMS.main : RANK_GEMS.lt;
+  for (const [upTo, g] of T) if (place <= upTo) return g;
+  if (kind === 'main') return place * 4 <= fighters ? RANK_GEMS.mainQuarter : RANK_GEMS.mainBase;
+  return RANK_GEMS.ltBase;
+}
+
 export function rewardCoins(kind, mainNumber) {
   return kind === 'main' ? 10n * BigInt(mainNumber) : 5n * BigInt(Math.max(mainNumber - 1, 1));
 }

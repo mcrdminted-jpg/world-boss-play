@@ -3,7 +3,7 @@
 // in supabase/migrations/ implement the same rules inside Postgres. Keep all three in sync.
 import {
   rollDamage, rollCoins, upgradeCost, nextBossHp, retreatHp, attemptLabel,
-  rewardCoins, damagePerHitText, bossType, bossPerk, emptyPerks,
+  rewardCoins, rankGems, damagePerHitText, bossType, bossPerk, emptyPerks,
   UPGRADES, UPGRADE_KEYS, emptyUpgrades, costOf, randInt, CLASSES, CLASS_KEYS, CLASS_SWITCH_GEMS,
   FREE_SWITCH_DAYS, MONTHLY_SWITCH_DAYS, critChancePct, critMultPct, rollStrike, stochRound,
 } from './combat.js';
@@ -14,6 +14,9 @@ import { NODE, techSum, techUnlocked, techCost } from './tech.js';
 
 import { gearBonus, dropItem, gearState, equipItem, unequipItem, mergeItems, recycleItems, buyCrate, equippedOf, rollItem, grantItem, rerollItem } from './gear.js';
 import { DAILY, DAILY_LEN } from './daily.js';
+import { GIFTS, giftFor } from './holidays.js';
+import { regionOf } from './regions.js';
+export { GIFTS };
 export const CONFIG = {
   attemptMs: 7 * 86400000,
   dailyAttacks: 5,
@@ -24,6 +27,49 @@ export const CONFIG = {
   feedSize: 20,
   leaderboardSize: 50,
 };
+
+// State Boss: a rare summon drops from World Boss rewards. The holder spawns a cheap boss that only their region
+// (US state, or country outside the US) can attack, using the same daily attacks. Mirrors 0023_state_boss.sql.
+// Gems on a kill (Andy, 2026-11-12): the summoner gets 20, everyone else who hit it gets 1. No ranking.
+export const STATE_BOSS = { summonPpm: 100, hpPct: 10, ms: 3 * 86400000, moveDays: 7, summonerGems: 20, helperGems: 1 };
+const regionOfP = (p) => regionOf(p.country, p.state);
+const stateMap = (w) => (w.stateBosses || (w.stateBosses = new Map()));
+export function resolveStateExpiry(w, now) {
+  for (const [r, a] of stateMap(w)) if (now >= a.endsAt) { a.status = 'failed'; a.endedAt = a.endsAt; w.stateBosses.delete(r); }
+}
+export const stateBossOf = (w, p, now) => { resolveStateExpiry(w, now); const r = p && regionOfP(p); return r ? stateMap(w).get(r) || null : null; };
+export function stateSpawn(w, id, now) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  resolveExpiry(w, now); resolveStateExpiry(w, now);
+  const region = regionOfP(p);
+  if (!region) return { ok: false, error: 'no_region' };
+  if (!(p.summons > 0)) return { ok: false, error: 'no_summon' };
+  if (stateMap(w).has(region)) return { ok: false, error: 'already_active' };
+  let hp = (w.mainHps.get(w.mainNumber) * BigInt(STATE_BOSS.hpPct)) / 100n;
+  if (hp < w.config.minHp) hp = w.config.minHp;
+  const a = {
+    id: ++w.seq, kind: 'state', region, summoner: id, mainNumber: w.mainNumber, depth: 0, label: `State Boss ${region}`,
+    maxHp: hp, hp, startedAt: now, endsAt: now + STATE_BOSS.ms, status: 'active', endedAt: null, damage: 0n, attacks: 0,
+    contributions: new Map(), finalBlowBy: null,
+  };
+  w.stateBosses.set(region, a);
+  p.summons -= 1;
+  return { ok: true, region, attemptId: a.id };
+}
+function winState(w, a, killer, now) {
+  a.status = 'defeated'; a.endedAt = now; a.finalBlowBy = killer.id;
+  const coins = rewardCoins('state', a.mainNumber);
+  const paid = [...a.contributions].filter(([, c]) => c.damage >= 1n).map(([pid]) => pid);
+  // The summoner is paid even if they never hit it.
+  if (!paid.includes(a.summoner) && w.players.has(a.summoner)) paid.push(a.summoner);
+  for (const pid of paid) {
+    const gems = BigInt(pid === a.summoner ? STATE_BOSS.summonerGems : STATE_BOSS.helperGems);
+    w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, gems, claimed: false, luck: 1, lieutenant: true });
+  }
+  w.stateBosses.delete(a.region);
+  return { slayer: false, next: null, perk: null };
+}
 
 // Rewarded ads (Store spots). Mirrors wb_ad_reward in supabase/migrations/0007_ad_rewards.sql.
 export const AD_REWARDS = { attack: { max: 10 }, damage: { max: 10 }, gems: { max: 5, each: 1 } };
@@ -128,9 +174,11 @@ function winActive(w, killer, now) {
   const coins = rewardCoins(a.kind, a.mainNumber);
   // Gear luck by damage share: top 10% of contributors x1.5 on Rare-and-above, top half x1.25, everyone else x1.
   const ranked = [...a.contributions].filter(([, c]) => c.damage >= 1n).sort((x, y) => (x[1].damage === y[1].damage ? 0 : x[1].damage > y[1].damage ? -1 : 1));
-  ranked.forEach(([pid], i) => {
+  ranked.forEach(([pid, c], i) => {
     const luck = i * 10 < ranked.length ? 1.5 : i * 2 < ranked.length ? 1.25 : 1;
-    w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, gems: a.kind === 'main' ? 2n : 1n, claimed: false, luck, lieutenant: a.kind !== 'main' });
+    const place = 1 + ranked.filter(([, o]) => o.damage > c.damage).length; // ties share the better place
+    const gems = BigInt(rankGems(a.kind, place, ranked.length));
+    w.ledger.push({ id: ++w.seq, playerId: pid, attemptId: a.id, label: a.label, coins, gems, place, claimed: false, luck, lieutenant: a.kind !== 'main' });
   });
   if (w.depth > 0) {
     // Climb one rung. The rung above (or the numbered boss itself) is re-sized to at most what this
@@ -166,7 +214,7 @@ export function ensurePlayer(w, id, rng, name, now = 0) {
     p = {
       id, pid: ++w.seq, createdAt: now, badge: null, name: name || autoName(rng), coins: 0n, gems: 0n, damageRank: 0,
       attackDay: null, attacksUsed: 0, totalDamage: 0n, totalAttacks: 0, highestHit: 0n,
-      country: 'US', state: '', zip: '', idem: new Map(),
+      country: 'US', state: '', regionAt: null, summons: 0, idem: new Map(),
       perks: emptyPerks(), bonusAttacks: w.config.starterBonusAttacks, nameSet: !!name,
       up: emptyUpgrades(), cls: null, classFirstAt: null, classSwitchAt: null,
       abilityDay: null, abilityKind: null, abilityLeft: 0, crits: 0, gemsEarned: 0n,
@@ -208,9 +256,11 @@ export function attack(w, id, now, rng, opts = {}) {
   if (opts.key && p.idem.has(opts.key)) return p.idem.get(opts.key);
   rollover(w, p, now);
   const useBonus = !opts.skipLimit && p.bonusAttacks > 0;
-  const st0 = statsOf(w, p, w.active);
+  const st0 = statsOf(w, p, opts.target === 'state' ? (stateBossOf(w, p, now) || w.active) : w.active);
   if (!opts.skipLimit && !useBonus && p.attacksUsed >= st0.maxAttacks) return { ok: false, error: 'no_attacks' };
-  const a = w.active;
+  const toState = opts.target === 'state';
+  const a = toState ? stateBossOf(w, p, now) : w.active;
+  if (!a) return { ok: false, error: 'no_state_boss' };
   // Daily class ability charges (Titan Strike, Rain of Arrows, Arcane Burst multiply; Shadow Strike forces a crit).
   let abilityPct = 100, forceCrit = false;
   if (p.abilityLeft > 0 && p.abilityKind) {
@@ -267,14 +317,14 @@ export function attack(w, id, now, rng, opts = {}) {
   if (dmg > p.highestHit) p.highestHit = dmg;
   const label = a.label;
   let kill = null;
-  if (a.hp === 0n) kill = winActive(w, p, now);
+  if (a.hp === 0n) kill = toState ? winState(w, a, p, now) : winActive(w, p, now);
   const res = {
     ok: true, damage: dmg.toString(), coins: coins.toString(), killed: !!kill,
     slayer: kill ? kill.slayer : false, attempt: label, next: kill ? kill.next : null,
-    perk: kill ? kill.perk : null, crit, double, gem, gems, ability: abilityPct !== 100 || forceCrit, boost,
+    perk: kill ? kill.perk : null, crit, double, gem, gems, ability: abilityPct !== 100 || forceCrit, boost, target: toState ? 'state' : 'world',
     attacksLeft: p.bonusAttacks + Math.max(0, st.maxAttacks - p.attacksUsed),
   };
-  w.events.push({ id: ++w.seq, attemptId: a.id, playerId: id, name: p.name, damage: dmg, kill: !!kill, crit, at: now });
+  w.events.push({ id: ++w.seq, attemptId: a.id, playerId: id, name: p.name, damage: dmg, kill: !!kill, crit, at: now, state: toState });
   if (w.events.length > 500) w.events.splice(0, w.events.length - 500);
   if (opts.key) {
     p.idem.set(opts.key, res);
@@ -397,6 +447,23 @@ export function useAbility(w, id, now) {
   return { ok: true, cls: p.cls, ability: c.ability };
 }
 
+// Gifts: a fixed window (a holiday) when players in the matching countries can claim a one-time gift. The table is shared/holidays.js.
+export function giftInfo(p, now) {
+  if (!p) return null;
+  const g = GIFTS.find((x) => now >= x.starts && now < x.ends && giftFor(x, p.country) && !(p.gifts || []).includes(x.code));
+  return g ? { code: g.code, title: g.title, gems: g.gems, attacks: g.attacks, ends: g.ends } : null;
+}
+export function claimGift(w, id, code, now) {
+  const p = w.players.get(id);
+  if (!p) return { ok: false, error: 'no_player' };
+  const g = GIFTS.find((x) => x.code === code);
+  if (!g || now < g.starts || now >= g.ends || !giftFor(g, p.country)) return { ok: false, error: 'no_gift' };
+  p.gifts = p.gifts || [];
+  if (p.gifts.includes(code)) return { ok: false, error: 'already_claimed' };
+  p.gifts.push(code); p.gems += BigInt(g.gems); p.gemsEarned += BigInt(g.gems); p.bonusAttacks += g.attacks;
+  return { ok: true, code, gems: g.gems, attacks: g.attacks };
+}
+
 // Daily reward: one claim per calendar day, day N of a 30-day cycle = your Nth claim. No streak to lose.
 export function dailyInfo(p, now) {
   const count = (p && p.dailyCount) || 0;
@@ -445,17 +512,20 @@ export function adReward(w, id, kind, now) {
 export function claimRewards(w, id, rng = Math.random) {
   const p = w.players.get(id);
   if (!p) return { ok: false, error: 'no_player' };
-  let total = 0n, gems = 0n, n = 0;
+  let total = 0n, gems = 0n, n = 0, summons = 0;
   const drops = []; // one piece of gear for every boss or lieutenant you helped kill
   for (const r of w.ledger) {
     if (r.playerId === id && !r.claimed) {
       r.claimed = true; total += r.coins; gems += r.gems || 0n; n += 1;
       drops.push(dropItem(p, rng, r.luck || 1, !!r.lieutenant));
+      // A World Boss reward has a tiny chance to carry a State Boss summon.
+      if (!r.lieutenant && randInt(1000000, rng) < STATE_BOSS.summonPpm) summons += 1;
     }
   }
   p.coins += total;
   p.gems += gems;
-  return { ok: true, claimed: n, coins: total.toString(), gems: gems.toString(), drops };
+  p.summons = (p.summons || 0) + summons;
+  return { ok: true, claimed: n, coins: total.toString(), gems: gems.toString(), drops, summons };
 }
 
 // Gear actions (rules live in shared/gear.js).
@@ -470,35 +540,37 @@ export const gearCrate = (w, id, tier, rng = Math.random) => withPlayer(w, id, (
 
 const clean = (s, max) => String(s || '').trim().slice(0, max);
 
-export function setProfile(w, id, { name, country, state, zip } = {}) {
+export function setProfile(w, id, { name, country, state } = {}, now = Date.now()) {
   const p = w.players.get(id);
   if (!p) return { ok: false, error: 'no_player' };
+  let n = null, c = p.country, st = p.state;
   if (name !== undefined) {
-    const n = String(name ?? '').trim();
+    n = String(name ?? '').trim();
     const err = nameError(n);
     if (err) return { ok: false, error: err };
-    p.name = n;
-    p.nameSet = true;
   }
   if (country !== undefined) {
-    const c = clean(country, 2).toUpperCase();
+    c = clean(country, 2).toUpperCase();
     if (!/^[A-Z]{2}$/.test(c)) return { ok: false, error: 'bad_country' };
-    p.country = c;
   }
   if (state !== undefined) {
-    const s = clean(state, 3).toUpperCase();
-    if (s && !/^[A-Z]{2,3}$/.test(s)) return { ok: false, error: 'bad_state' };
-    p.state = s;
+    st = clean(state, 3).toUpperCase();
+    if (st && !/^[A-Z]{2,3}$/.test(st)) return { ok: false, error: 'bad_state' };
   }
-  if (zip !== undefined) {
-    const z = clean(zip, 10);
-    if (z && !/^\d{5}$/.test(z)) return { ok: false, error: 'bad_zip' };
-    p.zip = z;
+  if (c !== 'US') st = '';
+  // Moving to another region (to join a friend's State Boss) is allowed once every 7 days. The first pick is free.
+  const was = regionOfP(p), next = regionOf(c, st);
+  if (was !== next) {
+    const until = p.regionAt == null ? 0 : p.regionAt + STATE_BOSS.moveDays * 86400000;
+    if (now < until) return { ok: false, error: 'state_locked', nextAt: until };
+    if (was) p.regionAt = now;
   }
+  if (n !== null) { p.name = n; p.nameSet = true; }
+  p.country = c; p.state = st;
   return { ok: true };
 }
 
-// scope: world | country | state | local (same 3-digit ZIP prefix). period: current | all.
+// scope: world | country | state. period: current | all.
 export function leaderboard(w, id, scope, period) {
   const me = w.players.get(id);
   let rows = [];
@@ -511,7 +583,6 @@ export function leaderboard(w, id, scope, period) {
     if (scope === 'world' || !me) return true;
     if (scope === 'country') return p.country === me.country;
     if (scope === 'state') return p.country === me.country && p.state && p.state === me.state;
-    if (scope === 'local') return me.zip && p.zip && p.zip.slice(0, 3) === me.zip.slice(0, 3);
     return true;
   });
   rows.sort((x, y) => (x.damage === y.damage ? 0 : x.damage > y.damage ? -1 : 1));
@@ -521,6 +592,19 @@ export function leaderboard(w, id, scope, period) {
   }));
   const mine = ranked.find((r) => r.me) || null;
   return { scope, period, total: ranked.length, top: ranked.slice(0, w.config.leaderboardSize), me: mine };
+}
+
+// What a player sees of the State Boss in their own region.
+function stateBossView(w, p, now) {
+  const a = stateBossOf(w, p, now);
+  if (!a) return null;
+  const top = [...a.contributions].sort((x, y) => (x[1].damage === y[1].damage ? 0 : x[1].damage > y[1].damage ? -1 : 1)).slice(0, 5);
+  return {
+    attemptId: a.id, region: a.region, label: a.label, hp: a.hp.toString(), maxHp: a.maxHp.toString(), endsAt: a.endsAt,
+    summoner: w.players.get(a.summoner)?.name || null, fighters: a.contributions.size,
+    myDamage: (a.contributions.get(p.id)?.damage || 0n).toString(),
+    top: top.map(([pid, c]) => ({ name: w.players.get(pid)?.name || '', damage: c.damage.toString(), me: pid === p.id })),
+  };
 }
 
 export function publicState(w, id, now) {
@@ -548,7 +632,9 @@ export function publicState(w, id, now) {
       badgesEarned: earnedBadges(bossesHelped(w, id), slayerKills(w, id)),
       share: shareOf(w, a, id),
       totalDamage: p.totalDamage.toString(), totalAttacks: p.totalAttacks, highestHit: p.highestHit.toString(),
-      country: p.country, state: p.state, zip: p.zip,
+      country: p.country, state: p.state, region: regionOfP(p), summons: p.summons || 0,
+      regionNextAt: p.regionAt != null && now < p.regionAt + STATE_BOSS.moveDays * 86400000 ? p.regionAt + STATE_BOSS.moveDays * 86400000 : null,
+      stateBoss: stateBossView(w, p, now),
       pendingRewards: { count: pending.length, coins: pending.reduce((s, r) => s + r.coins, 0n).toString(), gems: pending.reduce((s, r) => s + (r.gems || 0n), 0n).toString() },
       slayer: [...w.slayers].filter(([, pid]) => pid === id).map(([n]) => n),
       upgrades: Object.fromEntries(UPGRADE_KEYS.map((key) => {
@@ -563,10 +649,13 @@ export function publicState(w, id, now) {
       cls: p.cls, classFreeUntil: classInfo(p, now).freeUntil, classNextFreeAt: classInfo(p, now).nextFreeAt,
       classSwitchFree: classInfo(p, now).freeNow,
       abilityReady: !!p.cls && p.abilityDay !== dayKey(now), abilityKind: p.abilityKind, abilityLeft: p.abilityLeft,
-      ads: adsInfo(p, now), boostLeft: p.boostLeft || 0, daily: dailyInfo(p, now),
+      ads: adsInfo(p, now), boostLeft: p.boostLeft || 0, daily: dailyInfo(p, now), gift: giftInfo(p, now),
       scrap: p.scrap || 0, gearCount: (p.items || []).length, gearBonus: gearBonus(p),
     } : null,
-    feed: w.events.slice(-w.config.feedSize).reverse().map((e) => {
+    stateBosses: [...stateMap(w).values()].filter((x) => now < x.endsAt).sort((x, y) => y.startedAt - x.startedAt).slice(0, 10).map((x) => ({
+      region: x.region, summoner: w.players.get(x.summoner)?.name || null, hp: x.hp.toString(), maxHp: x.maxHp.toString(), endsAt: x.endsAt, fighters: x.contributions.size,
+    })),
+    feed: w.events.filter((e) => !e.state).slice(-w.config.feedSize).reverse().map((e) => {
       const fp = w.players.get(e.playerId);
       const att = w.attempts.find((x) => x.id === e.attemptId);
       return {

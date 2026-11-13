@@ -29,7 +29,8 @@ export async function createApi() {
   return {
     mode: raw.mode,
     state: async () => normalize(await raw.state()),
-    attack: () => raw.attack(),
+    attack: (target = 'world') => raw.attack(target),
+    stateSpawn: () => raw.stateSpawn(),
     buy: (key) => raw.buy(key),
     claim: () => raw.claim(),
     setProfile: (p) => raw.setProfile(p),
@@ -41,6 +42,7 @@ export async function createApi() {
     buyTech: (n) => raw.buyTech(n),
     adReward: (k) => raw.adReward(k),
     dailyClaim: () => raw.dailyClaim(),
+    giftClaim: (code) => raw.giftClaim(code),
     gear: () => raw.gear(),
     gearEquip: (id, on = true) => raw.gearEquip(id, on),
     gearMerge: (keep, feed) => raw.gearMerge(keep, feed),
@@ -48,6 +50,7 @@ export async function createApi() {
     gearCrate: (tier) => raw.gearCrate(tier),
     gearReroll: (id, what = 'stats') => raw.gearReroll(id, what),
     iapVerify: (t) => (raw.iapVerify ? raw.iapVerify(t) : Promise.resolve({ ok: false, error: 'not_supported' })),
+    iapVerifyGoogle: (t, p) => (raw.iapVerifyGoogle ? raw.iapVerifyGoogle(t, p) : Promise.resolve({ ok: false, error: 'not_supported' })),
     userId: () => (raw.userId ? raw.userId() : Promise.resolve(null)),
     deleteMe: () => raw.deleteMe(),
   };
